@@ -40,7 +40,7 @@ public class LiftLogDbContext : IdentityDbContext<IdentityUser>
             e.HasOne(x => x.PlanDay)
                 .WithMany()
                 .HasForeignKey(x => x.PlanDayId)
-                .OnDelete(DeleteBehavior.SetNull);
+                .OnDelete(DeleteBehavior.NoAction);
             e.HasIndex(x => new { x.UserId, x.Date });
         });
 

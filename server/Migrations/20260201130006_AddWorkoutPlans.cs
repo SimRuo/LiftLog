@@ -127,8 +127,7 @@ namespace server.Migrations
                 table: "WorkoutSessions",
                 column: "PlanDayId",
                 principalTable: "PlanDays",
-                principalColumn: "Id",
-                onDelete: ReferentialAction.SetNull);
+                principalColumn: "Id");
         }
 
         /// <inheritdoc />

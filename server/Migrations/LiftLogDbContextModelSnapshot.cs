@@ -667,7 +667,7 @@ namespace server.Migrations
                     b.HasOne("server.Models.PlanDay", "PlanDay")
                         .WithMany()
                         .HasForeignKey("PlanDayId")
-                        .OnDelete(DeleteBehavior.SetNull);
+                        .OnDelete(DeleteBehavior.NoAction);
 
                     b.HasOne("Microsoft.AspNetCore.Identity.IdentityUser", "User")
                         .WithMany()

@@ -12,7 +12,7 @@ using server.Data;
 namespace server.Migrations
 {
     [DbContext(typeof(LiftLogDbContext))]
-    [Migration("20260201122850_AddWorkoutPlans")]
+    [Migration("20260201130006_AddWorkoutPlans")]
     partial class AddWorkoutPlans
     {
         /// <inheritdoc />
@@ -670,7 +670,7 @@ namespace server.Migrations
                     b.HasOne("server.Models.PlanDay", "PlanDay")
                         .WithMany()
                         .HasForeignKey("PlanDayId")
-                        .OnDelete(DeleteBehavior.SetNull);
+                        .OnDelete(DeleteBehavior.NoAction);
 
                     b.HasOne("Microsoft.AspNetCore.Identity.IdentityUser", "User")
                         .WithMany()
