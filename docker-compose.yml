@@ -40,12 +40,13 @@ services:
     build:
       context: ./client
       dockerfile: Dockerfile
-    ports:
-      - "3000:80"
+    container_name: liftlog-frontend
     depends_on:
       - backend
     networks:
       - liftlog-network
+      - web-proxy
+    restart: unless-stopped
 
 volumes:
   mssql-data:
@@ -53,3 +54,5 @@ volumes:
 networks:
   liftlog-network:
     driver: bridge
+  web-proxy:
+    external: true
