@@ -1,1 +1,14 @@
 /.claude
+
+# .NET
+server/bin/
+server/obj/
+
+# Database files
+*.mdf
+*.ldf
+*.db
+
+# OS
+.DS_Store
+Thumbs.db
