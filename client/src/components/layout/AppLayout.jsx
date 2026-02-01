@@ -6,14 +6,14 @@ import {
 } from '@mui/material';
 import {
   FitnessCenterRounded, AddCircleRounded, ListAltRounded,
-  ShowChartRounded, AccountCircle
+  ShowChartRounded, AccountCircle, EventNoteRounded
 } from '@mui/icons-material';
 import { useAuth } from '../../context/AuthContext';
 
 const navItems = [
   { label: 'Workouts', icon: <ListAltRounded />, path: '/workouts' },
-  { label: 'New', icon: <AddCircleRounded />, path: '/workouts/new' },
-  { label: 'Exercises', icon: <FitnessCenterRounded />, path: '/exercises' },
+  { label: 'Log', icon: <AddCircleRounded />, path: '/workouts/log' },
+  { label: 'Plan', icon: <EventNoteRounded />, path: '/plan' },
   { label: 'Progress', icon: <ShowChartRounded />, path: '/progress' },
 ];
 

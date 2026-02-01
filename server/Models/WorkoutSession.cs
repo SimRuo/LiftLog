@@ -10,5 +10,8 @@ public class WorkoutSession
     public DateTime Date { get; set; }
     public string? Notes { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public int? PlanDayId { get; set; }
+    public PlanDay? PlanDay { get; set; }
+    public bool IsRestDay { get; set; }
     public ICollection<WorkoutSet> Sets { get; set; } = new List<WorkoutSet>();
 }

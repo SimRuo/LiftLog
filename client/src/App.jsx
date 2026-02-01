@@ -7,9 +7,10 @@ import ProtectedRoute from './components/layout/ProtectedRoute';
 import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
 import WorkoutHistoryPage from './pages/WorkoutHistoryPage';
-import NewWorkoutPage from './pages/NewWorkoutPage';
+import LogWorkoutPage from './pages/LogWorkoutPage';
 import WorkoutDetailPage from './pages/WorkoutDetailPage';
-import ExerciseLibraryPage from './pages/ExerciseLibraryPage';
+import PlanPage from './pages/PlanPage';
+import PlanEditPage from './pages/PlanEditPage';
 import ProgressPage from './pages/ProgressPage';
 
 export default function App() {
@@ -26,9 +27,10 @@ export default function App() {
             }>
               <Route index element={<Navigate to="/workouts" replace />} />
               <Route path="workouts" element={<WorkoutHistoryPage />} />
-              <Route path="workouts/new" element={<NewWorkoutPage />} />
+              <Route path="workouts/log" element={<LogWorkoutPage />} />
               <Route path="workouts/:id" element={<WorkoutDetailPage />} />
-              <Route path="exercises" element={<ExerciseLibraryPage />} />
+              <Route path="plan" element={<PlanPage />} />
+              <Route path="plan/edit" element={<PlanEditPage />} />
               <Route path="progress" element={<ProgressPage />} />
             </Route>
           </Routes>

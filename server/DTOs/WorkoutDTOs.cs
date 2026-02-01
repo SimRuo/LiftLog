@@ -7,9 +7,18 @@ public class CreateWorkoutRequest
     [Required]
     public DateTime Date { get; set; }
     public string? Notes { get; set; }
+    public int? PlanDayId { get; set; }
 
     [Required, MinLength(1)]
     public List<CreateSetRequest> Sets { get; set; } = new();
+}
+
+public class LogRestDayRequest
+{
+    [Required]
+    public DateTime Date { get; set; }
+    public string? Notes { get; set; }
+    public int? PlanDayId { get; set; }
 }
 
 public class CreateSetRequest
@@ -37,6 +46,8 @@ public class WorkoutSummaryResponse
     public int ExerciseCount { get; set; }
     public int SetCount { get; set; }
     public DateTime CreatedAt { get; set; }
+    public string? PlanDayName { get; set; }
+    public bool IsRestDay { get; set; }
 }
 
 public class WorkoutDetailResponse
@@ -45,6 +56,8 @@ public class WorkoutDetailResponse
     public DateTime Date { get; set; }
     public string? Notes { get; set; }
     public DateTime CreatedAt { get; set; }
+    public string? PlanDayName { get; set; }
+    public bool IsRestDay { get; set; }
     public List<WorkoutSetResponse> Sets { get; set; } = new();
 }
 

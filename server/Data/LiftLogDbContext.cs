@@ -12,6 +12,9 @@ public class LiftLogDbContext : IdentityDbContext<IdentityUser>
     public DbSet<Exercise> Exercises => Set<Exercise>();
     public DbSet<WorkoutSession> WorkoutSessions => Set<WorkoutSession>();
     public DbSet<WorkoutSet> WorkoutSets => Set<WorkoutSet>();
+    public DbSet<WorkoutPlan> WorkoutPlans => Set<WorkoutPlan>();
+    public DbSet<PlanDay> PlanDays => Set<PlanDay>();
+    public DbSet<PlanExercise> PlanExercises => Set<PlanExercise>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
@@ -34,7 +37,43 @@ public class LiftLogDbContext : IdentityDbContext<IdentityUser>
                 .WithMany()
                 .HasForeignKey(x => x.UserId)
                 .OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(x => x.PlanDay)
+                .WithMany()
+                .HasForeignKey(x => x.PlanDayId)
+                .OnDelete(DeleteBehavior.SetNull);
             e.HasIndex(x => new { x.UserId, x.Date });
+        });
+
+        builder.Entity<WorkoutPlan>(e =>
+        {
+            e.Property(x => x.Name).HasMaxLength(100);
+            e.HasOne(x => x.User)
+                .WithMany()
+                .HasForeignKey(x => x.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        builder.Entity<PlanDay>(e =>
+        {
+            e.Property(x => x.Name).HasMaxLength(100);
+            e.HasOne(x => x.WorkoutPlan)
+                .WithMany(p => p.Days)
+                .HasForeignKey(x => x.WorkoutPlanId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        builder.Entity<PlanExercise>(e =>
+        {
+            e.Property(x => x.Weight).HasColumnType("decimal(7,2)");
+            e.Property(x => x.Reps).HasMaxLength(20);
+            e.HasOne(x => x.PlanDay)
+                .WithMany(d => d.Exercises)
+                .HasForeignKey(x => x.PlanDayId)
+                .OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(x => x.Exercise)
+                .WithMany()
+                .HasForeignKey(x => x.ExerciseId)
+                .OnDelete(DeleteBehavior.Restrict);
         });
 
         builder.Entity<WorkoutSet>(e =>

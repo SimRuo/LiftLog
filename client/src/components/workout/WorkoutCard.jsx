@@ -2,7 +2,7 @@ import { useNavigate } from 'react-router-dom';
 import {
   Card, CardActionArea, CardContent, Typography, Chip, Stack
 } from '@mui/material';
-import { CalendarTodayRounded } from '@mui/icons-material';
+import { CalendarTodayRounded, HotelRounded } from '@mui/icons-material';
 
 export default function WorkoutCard({ workout }) {
   const navigate = useNavigate();
@@ -16,13 +16,23 @@ export default function WorkoutCard({ workout }) {
         <CardContent>
           <Stack direction="row" justifyContent="space-between" alignItems="center">
             <Stack direction="row" alignItems="center" spacing={1}>
-              <CalendarTodayRounded fontSize="small" color="primary" />
-              <Typography variant="subtitle1" fontWeight={600}>{date}</Typography>
+              {workout.isRestDay ? (
+                <HotelRounded fontSize="small" color="secondary" />
+              ) : (
+                <CalendarTodayRounded fontSize="small" color="primary" />
+              )}
+              <Typography variant="subtitle1" fontWeight={600}>
+                {workout.planDayName ? `${workout.planDayName} — ${date}` : date}
+              </Typography>
             </Stack>
-            <Stack direction="row" spacing={1}>
-              <Chip label={`${workout.exerciseCount} exercises`} size="small" />
-              <Chip label={`${workout.setCount} sets`} size="small" variant="outlined" />
-            </Stack>
+            {workout.isRestDay ? (
+              <Chip label="Rest Day" size="small" color="secondary" variant="outlined" />
+            ) : (
+              <Stack direction="row" spacing={1}>
+                <Chip label={`${workout.exerciseCount} exercises`} size="small" />
+                <Chip label={`${workout.setCount} sets`} size="small" variant="outlined" />
+              </Stack>
+            )}
           </Stack>
           {workout.notes && (
             <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>

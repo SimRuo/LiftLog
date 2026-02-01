@@ -5,7 +5,7 @@ import {
   Table, TableBody, TableCell, TableHead, TableRow,
   IconButton, Button, Dialog, DialogTitle, DialogActions
 } from '@mui/material';
-import { DeleteRounded, ArrowBackRounded } from '@mui/icons-material';
+import { DeleteRounded, ArrowBackRounded, HotelRounded } from '@mui/icons-material';
 import { workoutsApi } from '../api/workouts';
 
 export default function WorkoutDetailPage() {
@@ -43,7 +43,14 @@ export default function WorkoutDetailPage() {
       <Box sx={{ display: 'flex', alignItems: 'center', mb: 2, gap: 1 }}>
         <IconButton onClick={() => navigate('/workouts')}><ArrowBackRounded /></IconButton>
         <Box sx={{ flex: 1 }}>
-          <Typography variant="h5" fontWeight={700}>{date}</Typography>
+          <Typography variant="h5" fontWeight={700}>
+            {workout.planDayName ? `${workout.planDayName} — ${date}` : date}
+          </Typography>
+          {workout.isRestDay && (
+            <Typography color="secondary.main" sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+              <HotelRounded fontSize="small" /> Rest Day
+            </Typography>
+          )}
           {workout.notes && <Typography color="text.secondary">{workout.notes}</Typography>}
         </Box>
         <IconButton color="error" onClick={() => setDeleteOpen(true)}>
