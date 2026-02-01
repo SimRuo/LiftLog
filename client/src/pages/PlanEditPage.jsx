@@ -2,7 +2,8 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Typography, Box, Button, TextField, Card, CardContent,
-  IconButton, Stack, Alert, CircularProgress, Autocomplete
+  IconButton, Stack, Alert, CircularProgress, Autocomplete,
+  Dialog, DialogTitle, DialogContent, DialogActions, MenuItem
 } from '@mui/material';
 import {
   AddRounded, DeleteRounded, SaveRounded, DragIndicatorRounded,
@@ -10,6 +11,8 @@ import {
 } from '@mui/icons-material';
 import { plansApi } from '../api/plans';
 import { exercisesApi } from '../api/exercises';
+
+const CREATE_PREFIX = 'create:';
 
 export default function PlanEditPage() {
   const navigate = useNavigate();
@@ -20,6 +23,10 @@ export default function PlanEditPage() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
   const [isEdit, setIsEdit] = useState(false);
+
+  // Create exercise dialog state
+  const [createDialog, setCreateDialog] = useState({ open: false, name: '', dayIdx: -1 });
+  const [newCategory, setNewCategory] = useState('');
 
   useEffect(() => {
     Promise.all([
@@ -49,6 +56,8 @@ export default function PlanEditPage() {
       }
     }).finally(() => setLoading(false));
   }, []);
+
+  const existingCategories = [...new Set(allExercises.map(e => e.category))].sort();
 
   const addDay = () => {
     setDays(prev => [...prev, { name: '', exercises: [] }]);
@@ -80,8 +89,7 @@ export default function PlanEditPage() {
     setDays(prev => prev.map((d, i) => i === dayIdx ? { ...d, name } : d));
   };
 
-  const addExercise = (dayIdx, exercise) => {
-    if (!exercise) return;
+  const addExerciseToDay = (dayIdx, exercise) => {
     setDays(prev => prev.map((d, i) => {
       if (i !== dayIdx) return d;
       return {
@@ -97,6 +105,33 @@ export default function PlanEditPage() {
         }],
       };
     }));
+  };
+
+  const handleAutocompleteChange = (dayIdx, value) => {
+    if (!value) return;
+
+    // If user picked "Create X" option
+    if (typeof value === 'string' || (value && value.isCreate)) {
+      const name = value.isCreate ? value.name : value;
+      setCreateDialog({ open: true, name, dayIdx });
+      setNewCategory('');
+      return;
+    }
+
+    addExerciseToDay(dayIdx, value);
+  };
+
+  const handleCreateExercise = async () => {
+    if (!newCategory.trim()) return;
+    try {
+      const created = await exercisesApi.create(createDialog.name.trim(), newCategory.trim());
+      const newEx = { id: created.id, name: created.name, category: created.category, isDefault: false };
+      setAllExercises(prev => [...prev, newEx]);
+      addExerciseToDay(createDialog.dayIdx, newEx);
+      setCreateDialog({ open: false, name: '', dayIdx: -1 });
+    } catch (err) {
+      setError(err.message || 'Failed to create exercise');
+    }
   };
 
   const removeExercise = (dayIdx, exIdx) => {
@@ -170,6 +205,17 @@ export default function PlanEditPage() {
     }
   };
 
+  const filterOptions = (options, { inputValue }) => {
+    const input = inputValue.toLowerCase().trim();
+    const filtered = options.filter(o =>
+      o.name.toLowerCase().includes(input)
+    );
+    if (input && !options.some(o => o.name.toLowerCase() === input)) {
+      filtered.push({ isCreate: true, name: inputValue.trim(), category: 'New' });
+    }
+    return filtered;
+  };
+
   if (loading) return <Box sx={{ display: 'flex', justifyContent: 'center', mt: 4 }}><CircularProgress /></Box>;
 
   return (
@@ -212,7 +258,7 @@ export default function PlanEditPage() {
                     <DeleteRounded fontSize="small" />
                   </IconButton>
                 </Box>
-                <Stack direction="row" spacing={1}>
+                <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap', gap: 1 }}>
                   <TextField size="small" label="Sets" type="number" sx={{ width: 70 }}
                     value={ex.sets}
                     onChange={e => updateExercise(dayIdx, exIdx, 'sets', e.target.value)}
@@ -225,7 +271,7 @@ export default function PlanEditPage() {
                     value={ex.weight}
                     onChange={e => updateExercise(dayIdx, exIdx, 'weight', e.target.value)}
                     inputProps={{ min: 0, step: 0.5 }} />
-                  <TextField size="small" label="Notes" sx={{ flex: 1 }}
+                  <TextField size="small" label="Notes" sx={{ flex: 1, minWidth: 80 }}
                     value={ex.notes}
                     onChange={e => updateExercise(dayIdx, exIdx, 'notes', e.target.value)} />
                 </Stack>
@@ -234,13 +280,15 @@ export default function PlanEditPage() {
 
             <Autocomplete
               options={allExercises}
-              getOptionLabel={opt => opt.name}
+              getOptionLabel={opt => opt.isCreate ? `Create "${opt.name}"` : opt.name}
               groupBy={opt => opt.category}
-              onChange={(_, val) => addExercise(dayIdx, val)}
+              filterOptions={filterOptions}
+              onChange={(_, val) => handleAutocompleteChange(dayIdx, val)}
               value={null}
               blurOnSelect
+              clearOnBlur
               renderInput={(params) => (
-                <TextField {...params} size="small" label="Add exercise..." />
+                <TextField {...params} size="small" label="Add exercise (type to search or create)..." />
               )}
               sx={{ mt: 1 }}
             />
@@ -257,6 +305,30 @@ export default function PlanEditPage() {
         onClick={handleSave} disabled={saving} size="large">
         {saving ? 'Saving...' : 'Save Plan'}
       </Button>
+
+      <Dialog open={createDialog.open} onClose={() => setCreateDialog({ open: false, name: '', dayIdx: -1 })}>
+        <DialogTitle>Create Exercise: {createDialog.name}</DialogTitle>
+        <DialogContent>
+          <TextField
+            select fullWidth label="Category" value={newCategory}
+            onChange={e => setNewCategory(e.target.value)}
+            sx={{ mt: 1 }}
+          >
+            {existingCategories.map(cat => (
+              <MenuItem key={cat} value={cat}>{cat}</MenuItem>
+            ))}
+          </TextField>
+          <TextField fullWidth label="Or type a new category" value={newCategory}
+            onChange={e => setNewCategory(e.target.value)}
+            sx={{ mt: 2 }} size="small" />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setCreateDialog({ open: false, name: '', dayIdx: -1 })}>Cancel</Button>
+          <Button variant="contained" onClick={handleCreateExercise} disabled={!newCategory.trim()}>
+            Create
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }

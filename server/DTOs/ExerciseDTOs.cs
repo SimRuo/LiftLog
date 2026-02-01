@@ -1,4 +1,15 @@
+using System.ComponentModel.DataAnnotations;
+
 namespace server.DTOs;
+
+public class CreateExerciseRequest
+{
+    [Required, MaxLength(100)]
+    public string Name { get; set; } = string.Empty;
+
+    [Required, MaxLength(50)]
+    public string Category { get; set; } = string.Empty;
+}
 
 public class ExerciseResponse
 {
