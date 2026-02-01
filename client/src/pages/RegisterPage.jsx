@@ -8,7 +8,7 @@ import { authApi } from '../api/auth';
 import { useAuth } from '../context/AuthContext';
 
 export default function RegisterPage() {
-  const [email, setEmail] = useState('');
+  const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState('');
@@ -25,8 +25,8 @@ export default function RegisterPage() {
     }
     setLoading(true);
     try {
-      const res = await authApi.register(email, password);
-      login(res.token, res.email);
+      const res = await authApi.register(username, password);
+      login(res.token, res.username);
       navigate('/workouts');
     } catch (err) {
       setError(err.message || 'Registration failed');
@@ -46,8 +46,9 @@ export default function RegisterPage() {
           </Box>
           {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
           <Box component="form" onSubmit={handleSubmit}>
-            <TextField fullWidth label="Email" type="email" margin="normal"
-              value={email} onChange={e => setEmail(e.target.value)} required />
+            <TextField fullWidth label="Username" margin="normal"
+              value={username} onChange={e => setUsername(e.target.value)} required
+              inputProps={{ minLength: 3, maxLength: 30 }} />
             <TextField fullWidth label="Password" type="password" margin="normal"
               value={password} onChange={e => setPassword(e.target.value)} required
               inputProps={{ minLength: 6 }} />

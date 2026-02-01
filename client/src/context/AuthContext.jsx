@@ -4,26 +4,26 @@ const AuthContext = createContext(null);
 
 export function AuthProvider({ children }) {
   const [token, setToken] = useState(() => localStorage.getItem('token'));
-  const [email, setEmail] = useState(() => localStorage.getItem('email'));
+  const [username, setUsername] = useState(() => localStorage.getItem('username'));
 
-  const login = useCallback((token, email) => {
+  const login = useCallback((token, username) => {
     localStorage.setItem('token', token);
-    localStorage.setItem('email', email);
+    localStorage.setItem('username', username);
     setToken(token);
-    setEmail(email);
+    setUsername(username);
   }, []);
 
   const logout = useCallback(() => {
     localStorage.removeItem('token');
-    localStorage.removeItem('email');
+    localStorage.removeItem('username');
     setToken(null);
-    setEmail(null);
+    setUsername(null);
   }, []);
 
   const isAuthenticated = !!token;
 
   return (
-    <AuthContext.Provider value={{ token, email, isAuthenticated, login, logout }}>
+    <AuthContext.Provider value={{ token, username, isAuthenticated, login, logout }}>
       {children}
     </AuthContext.Provider>
   );

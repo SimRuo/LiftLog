@@ -148,3 +148,4 @@
 /home/simon/Projects/Personal/LiftLog/server/obj/Debug/net8.0/server.pdb
 /home/simon/Projects/Personal/LiftLog/server/obj/Debug/net8.0/server.genruntimeconfig.cache
 /home/simon/Projects/Personal/LiftLog/server/obj/Debug/net8.0/ref/server.dll
+/home/simon/Projects/Personal/LiftLog/server/obj/Debug/net8.0/server.sourcelink.json

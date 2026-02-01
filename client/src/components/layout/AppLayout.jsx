@@ -20,7 +20,7 @@ const navItems = [
 export default function AppLayout() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { email, logout } = useAuth();
+  const { username, logout } = useAuth();
   const [anchorEl, setAnchorEl] = useState(null);
 
   const currentNav = navItems.findIndex(item => location.pathname.startsWith(item.path));
@@ -44,7 +44,7 @@ export default function AppLayout() {
             <AccountCircle />
           </IconButton>
           <Menu anchorEl={anchorEl} open={!!anchorEl} onClose={() => setAnchorEl(null)}>
-            <MenuItem disabled>{email}</MenuItem>
+            <MenuItem disabled>{username}</MenuItem>
             <MenuItem onClick={handleLogout}>Logout</MenuItem>
           </Menu>
         </Toolbar>

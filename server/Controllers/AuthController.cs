@@ -24,23 +24,23 @@ public class AuthController : ControllerBase
     [HttpPost("register")]
     public async Task<ActionResult<AuthResponse>> Register(RegisterRequest request)
     {
-        var user = new IdentityUser { UserName = request.Email, Email = request.Email };
+        var user = new IdentityUser { UserName = request.Username };
         var result = await _userManager.CreateAsync(user, request.Password);
 
         if (!result.Succeeded)
             return BadRequest(result.Errors.Select(e => e.Description));
 
-        return Ok(new AuthResponse { Token = GenerateToken(user), Email = user.Email! });
+        return Ok(new AuthResponse { Token = GenerateToken(user), Username = user.UserName! });
     }
 
     [HttpPost("login")]
     public async Task<ActionResult<AuthResponse>> Login(LoginRequest request)
     {
-        var user = await _userManager.FindByEmailAsync(request.Email);
+        var user = await _userManager.FindByNameAsync(request.Username);
         if (user == null || !await _userManager.CheckPasswordAsync(user, request.Password))
-            return Unauthorized("Invalid email or password");
+            return Unauthorized("Invalid username or password");
 
-        return Ok(new AuthResponse { Token = GenerateToken(user), Email = user.Email! });
+        return Ok(new AuthResponse { Token = GenerateToken(user), Username = user.UserName! });
     }
 
     private string GenerateToken(IdentityUser user)
@@ -51,7 +51,7 @@ public class AuthController : ControllerBase
         var claims = new[]
         {
             new Claim(ClaimTypes.NameIdentifier, user.Id),
-            new Claim(ClaimTypes.Email, user.Email!)
+            new Claim(ClaimTypes.Name, user.UserName!)
         };
 
         var token = new JwtSecurityToken(
