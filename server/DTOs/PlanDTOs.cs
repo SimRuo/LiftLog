@@ -69,6 +69,15 @@ public class PlanExerciseResponse
     public string Reps { get; set; } = string.Empty;
     public decimal Weight { get; set; }
     public string? Notes { get; set; }
+    public List<LastSessionSetData> LastSessionSets { get; set; } = new();
+}
+
+public class LastSessionSetData
+{
+    public int ExerciseId { get; set; }
+    public int SetNumber { get; set; }
+    public int Reps { get; set; }
+    public decimal Weight { get; set; }
 }
 
 public class NextWorkoutResponse

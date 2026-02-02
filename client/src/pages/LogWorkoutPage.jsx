@@ -31,6 +31,7 @@ export default function LogWorkoutPage() {
           plannedSets: ex.sets,
           plannedReps: ex.reps,
           plannedWeight: ex.weight,
+          lastSessionSets: ex.lastSessionSets || [],
           sets: Array.from({ length: ex.sets }, (_, i) => ({
             setNumber: i + 1,
             reps: parseInt(ex.reps) || 0,
@@ -173,6 +174,21 @@ export default function LogWorkoutPage() {
                   Planned: {ex.plannedSets} x {ex.plannedReps}
                   {ex.plannedWeight > 0 ? ` @ ${ex.plannedWeight} kg` : ''}
                 </Typography>
+                {ex.lastSessionSets.length > 0 && (
+                  <Typography variant="caption" color="text.secondary" display="block">
+                    Last: {(() => {
+                      const sets = ex.lastSessionSets;
+                      const reps = sets.map(s => s.reps);
+                      const weight = sets[0].weight;
+                      const allSameReps = reps.every(r => r === reps[0]);
+                      const allSameWeight = sets.every(s => s.weight === weight);
+                      if (allSameReps && allSameWeight) {
+                        return `${reps.length}x${reps[0]}${weight > 0 ? ` @ ${weight}kg` : ''}`;
+                      }
+                      return sets.map(s => `${s.reps}${s.weight > 0 ? `@${s.weight}` : ''}`).join(', ');
+                    })()}
+                  </Typography>
+                )}
               </Box>
               <Chip label={ex.exerciseCategory} size="small" variant="outlined" />
             </Box>

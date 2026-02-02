@@ -66,18 +66,42 @@ public class WorkoutsController : ControllerBase
 
         var nextDay = days.First(d => d.Order == nextOrder);
 
-        return Ok(new NextWorkoutResponse
+        // Get last session's sets for this plan day
+        var lastSets = (await _db.QueryAsync<LastSessionSetData>(
+            @"SELECT wset.ExerciseId, wset.SetNumber, wset.Reps, wset.Weight
+              FROM WorkoutSets wset
+              INNER JOIN WorkoutSessions ws ON ws.Id = wset.WorkoutSessionId
+              WHERE ws.PlanDayId = @PlanDayId AND ws.UserId = @UserId
+                AND ws.Id = (
+                    SELECT TOP 1 Id FROM WorkoutSessions
+                    WHERE PlanDayId = @PlanDayId AND UserId = @UserId AND IsRestDay = 0
+                    ORDER BY Date DESC, CreatedAt DESC
+                )
+              ORDER BY wset.ExerciseId, wset.SetNumber",
+            new { PlanDayId = nextDay.Id, UserId }))
+            .GroupBy(s => s.ExerciseId)
+            .ToDictionary(g => g.Key, g => g.ToList());
+
+        var exercises = nextDay.Exercises.Select(e =>
         {
-            PlanDayId = nextDay.Id,
-            DayName = nextDay.Name,
-            DayOrder = nextDay.Order,
-            Exercises = nextDay.Exercises.Select(e => new PlanExerciseResponse
+            var resp = new PlanExerciseResponse
             {
                 Id = e.Id, ExerciseId = e.ExerciseId,
                 ExerciseName = e.ExerciseName, ExerciseCategory = e.ExerciseCategory,
                 Order = e.Order, Sets = e.Sets, Reps = e.Reps,
                 Weight = e.Weight, Notes = e.Notes
-            }).ToList()
+            };
+            if (lastSets.TryGetValue(e.ExerciseId, out var sets))
+                resp.LastSessionSets = sets;
+            return resp;
+        }).ToList();
+
+        return Ok(new NextWorkoutResponse
+        {
+            PlanDayId = nextDay.Id,
+            DayName = nextDay.Name,
+            DayOrder = nextDay.Order,
+            Exercises = exercises
         });
     }
 
@@ -139,6 +163,23 @@ public class WorkoutsController : ControllerBase
                     SessionId = sessionId,
                     s.ExerciseId, s.SetNumber, s.Reps, s.Weight, s.Notes
                 }));
+
+            // Update plan exercise weights to match what was actually lifted
+            if (request.PlanDayId.HasValue)
+            {
+                await _db.ExecuteAsync(
+                    @"UPDATE pe
+                      SET pe.Weight = sub.MaxWeight
+                      FROM PlanExercises pe
+                      INNER JOIN (
+                          SELECT wset.ExerciseId, MAX(wset.Weight) AS MaxWeight
+                          FROM WorkoutSets wset
+                          WHERE wset.WorkoutSessionId = @SessionId
+                          GROUP BY wset.ExerciseId
+                      ) sub ON sub.ExerciseId = pe.ExerciseId
+                      WHERE pe.PlanDayId = @PlanDayId",
+                    new { SessionId = sessionId, PlanDayId = request.PlanDayId.Value });
+            }
         }
 
         return CreatedAtAction(nameof(GetWorkout), new { id = sessionId },
