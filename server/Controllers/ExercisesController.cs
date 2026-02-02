@@ -1,10 +1,9 @@
+using System.Data;
 using System.Security.Claims;
+using Dapper;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
-using server.Data;
 using server.DTOs;
-using server.Models;
 
 namespace server.Controllers;
 
@@ -13,29 +12,17 @@ namespace server.Controllers;
 [Authorize]
 public class ExercisesController : ControllerBase
 {
-    private readonly LiftLogDbContext _db;
-
-    public ExercisesController(LiftLogDbContext db)
-    {
-        _db = db;
-    }
-
+    private readonly IDbConnection _db;
+    public ExercisesController(IDbConnection db) => _db = db;
     private string UserId => User.FindFirstValue(ClaimTypes.NameIdentifier)!;
 
     [HttpGet]
     public async Task<ActionResult<List<ExerciseByCategoryResponse>>> GetExercises()
     {
-        var exercises = await _db.Exercises
-            .OrderBy(e => e.Category)
-            .ThenBy(e => e.Name)
-            .Select(e => new ExerciseResponse
-            {
-                Id = e.Id,
-                Name = e.Name,
-                Category = e.Category,
-                IsDefault = e.IsDefault
-            })
-            .ToListAsync();
+        var exercises = await _db.QueryAsync<ExerciseResponse>(
+            @"SELECT Id, Name, Category, IsDefault
+              FROM Exercises
+              ORDER BY Category, Name");
 
         var grouped = exercises
             .GroupBy(e => e.Category)
@@ -52,37 +39,37 @@ public class ExercisesController : ControllerBase
     [HttpPost]
     public async Task<ActionResult<ExerciseResponse>> CreateExercise(CreateExerciseRequest request)
     {
-        var existing = await _db.Exercises
-            .FirstOrDefaultAsync(e => e.Name.ToLower() == request.Name.ToLower());
+        var trimmedName = request.Name.Trim();
+        var trimmedCategory = request.Category.Trim();
 
-        if (existing != null)
+        var existing = await _db.QueryFirstOrDefaultAsync<ExerciseResponse>(
+            @"SELECT Id, Name, Category, IsDefault
+              FROM Exercises WHERE Name = @Name",
+            new { Name = trimmedName });
+
+        if (existing != null) return Ok(existing);
+
+        try
         {
+            var id = await _db.QuerySingleAsync<int>(
+                @"INSERT INTO Exercises (Name, Category, IsDefault, CreatedByUserId)
+                  OUTPUT INSERTED.Id
+                  VALUES (@Name, @Category, 0, @UserId)",
+                new { Name = trimmedName, Category = trimmedCategory, UserId });
+
             return Ok(new ExerciseResponse
             {
-                Id = existing.Id,
-                Name = existing.Name,
-                Category = existing.Category,
-                IsDefault = existing.IsDefault
+                Id = id, Name = trimmedName,
+                Category = trimmedCategory, IsDefault = false
             });
         }
-
-        var exercise = new Exercise
+        catch (Microsoft.Data.SqlClient.SqlException ex) when (ex.Number is 2601 or 2627)
         {
-            Name = request.Name.Trim(),
-            Category = request.Category.Trim(),
-            IsDefault = false,
-            CreatedByUserId = UserId
-        };
-
-        _db.Exercises.Add(exercise);
-        await _db.SaveChangesAsync();
-
-        return Created("", new ExerciseResponse
-        {
-            Id = exercise.Id,
-            Name = exercise.Name,
-            Category = exercise.Category,
-            IsDefault = false
-        });
+            var raced = await _db.QueryFirstAsync<ExerciseResponse>(
+                @"SELECT Id, Name, Category, IsDefault
+                  FROM Exercises WHERE Name = @Name",
+                new { Name = trimmedName });
+            return Ok(raced);
+        }
     }
 }

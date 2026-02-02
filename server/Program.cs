@@ -1,6 +1,8 @@
+using System.Data;
 using System.Text;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
@@ -8,9 +10,14 @@ using server.Data;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// EF Core
-builder.Services.AddDbContext<LiftLogDbContext>(options =>
-    options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
+var connectionString = builder.Configuration.GetConnectionString("DefaultConnection")!;
+
+// Identity DbContext (only for AspNet* tables)
+builder.Services.AddDbContext<IdentityOnlyDbContext>(options =>
+    options.UseSqlServer(connectionString));
+
+// Dapper: scoped IDbConnection
+builder.Services.AddScoped<IDbConnection>(_ => new SqlConnection(connectionString));
 
 // Identity
 builder.Services.AddIdentity<IdentityUser, IdentityRole>(options =>
@@ -20,7 +27,7 @@ builder.Services.AddIdentity<IdentityUser, IdentityRole>(options =>
     options.Password.RequireNonAlphanumeric = false;
     options.Password.RequireUppercase = false;
 })
-.AddEntityFrameworkStores<LiftLogDbContext>()
+.AddEntityFrameworkStores<IdentityOnlyDbContext>()
 .AddDefaultTokenProviders();
 
 // JWT
@@ -79,11 +86,15 @@ builder.Services.AddCors(options =>
 
 var app = builder.Build();
 
-// Auto-migrate
+// Initialize database
 using (var scope = app.Services.CreateScope())
 {
-    var db = scope.ServiceProvider.GetRequiredService<LiftLogDbContext>();
-    db.Database.Migrate();
+    // Identity tables
+    var identityDb = scope.ServiceProvider.GetRequiredService<IdentityOnlyDbContext>();
+    identityDb.Database.EnsureCreated();
+
+    // Custom tables via raw SQL
+    await DbInitializer.InitializeAsync(connectionString);
 }
 
 if (app.Environment.IsDevelopment())

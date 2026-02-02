@@ -1,8 +1,8 @@
+using System.Data;
 using System.Security.Claims;
+using Dapper;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
-using server.Data;
 using server.DTOs;
 
 namespace server.Controllers;
@@ -12,51 +12,27 @@ namespace server.Controllers;
 [Authorize]
 public class ProgressController : ControllerBase
 {
-    private readonly LiftLogDbContext _db;
-
-    public ProgressController(LiftLogDbContext db)
-    {
-        _db = db;
-    }
-
+    private readonly IDbConnection _db;
+    public ProgressController(IDbConnection db) => _db = db;
     private string UserId => User.FindFirstValue(ClaimTypes.NameIdentifier)!;
 
     [HttpGet("{exerciseId}")]
     public async Task<ActionResult<List<ProgressDataPoint>>> GetProgress(
         int exerciseId, [FromQuery] string metric = "maxWeight")
     {
-        var sets = await _db.WorkoutSets
-            .Where(s => s.ExerciseId == exerciseId && s.WorkoutSession.UserId == UserId)
-            .Select(s => new
-            {
-                s.WorkoutSession.Date,
-                s.Weight,
-                s.Reps
-            })
-            .ToListAsync();
+        var aggregate = metric == "totalVolume"
+            ? "SUM(wset.Weight * wset.Reps)"
+            : "MAX(wset.Weight)";
 
-        var grouped = sets.GroupBy(s => s.Date.Date);
+        var result = await _db.QueryAsync<ProgressDataPoint>(
+            $@"SELECT CAST(ws.Date AS DATE) AS Date, {aggregate} AS Value
+               FROM WorkoutSets wset
+               INNER JOIN WorkoutSessions ws ON ws.Id = wset.WorkoutSessionId
+               WHERE wset.ExerciseId = @ExerciseId AND ws.UserId = @UserId
+               GROUP BY CAST(ws.Date AS DATE)
+               ORDER BY CAST(ws.Date AS DATE)",
+            new { ExerciseId = exerciseId, UserId });
 
-        List<ProgressDataPoint> result = metric switch
-        {
-            "totalVolume" => grouped
-                .Select(g => new ProgressDataPoint
-                {
-                    Date = g.Key,
-                    Value = g.Sum(s => s.Weight * s.Reps)
-                })
-                .OrderBy(p => p.Date)
-                .ToList(),
-            _ => grouped
-                .Select(g => new ProgressDataPoint
-                {
-                    Date = g.Key,
-                    Value = g.Max(s => s.Weight)
-                })
-                .OrderBy(p => p.Date)
-                .ToList()
-        };
-
-        return Ok(result);
+        return Ok(result.ToList());
     }
 }
