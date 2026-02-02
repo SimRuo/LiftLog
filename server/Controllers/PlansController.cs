@@ -21,9 +21,8 @@ public class PlansController : ControllerBase
     public async Task<ActionResult<PlanResponse>> GetPlan()
     {
         var plan = await _db.QueryFirstOrDefaultAsync<PlanResponse>(
-            @"SELECT TOP 1 Id, Name, CreatedAt
-              FROM WorkoutPlans WHERE UserId = @UserId
-              ORDER BY CreatedAt DESC",
+            @"SELECT TOP 1 Id, Name, CreatedAt, IsActive
+              FROM WorkoutPlans WHERE UserId = @UserId AND IsActive = 1",
             new { UserId });
 
         if (plan == null) return NotFound();
@@ -32,10 +31,22 @@ public class PlansController : ControllerBase
         return Ok(plan);
     }
 
+    [HttpGet("all")]
+    public async Task<ActionResult<List<PlanSummaryResponse>>> GetAllPlans()
+    {
+        var plans = await _db.QueryAsync<PlanSummaryResponse>(
+            @"SELECT Id, Name, CreatedAt, IsActive
+              FROM WorkoutPlans WHERE UserId = @UserId
+              ORDER BY IsActive DESC, CreatedAt DESC",
+            new { UserId });
+
+        return Ok(plans.ToList());
+    }
+
     [HttpPost]
     public async Task<ActionResult<PlanResponse>> CreatePlan(CreatePlanRequest request)
     {
-        await DeleteUserPlans();
+        await DeactivateUserPlans();
         var planId = await InsertPlan(request);
         return CreatedAtAction(nameof(GetPlan), await GetPlanById(planId));
     }
@@ -43,31 +54,52 @@ public class PlansController : ControllerBase
     [HttpPut]
     public async Task<ActionResult<PlanResponse>> UpdatePlan(CreatePlanRequest request)
     {
-        await DeleteUserPlans();
+        await DeactivateUserPlans();
         var planId = await InsertPlan(request);
         return Ok(await GetPlanById(planId));
+    }
+
+    [HttpPut("{id}/activate")]
+    public async Task<ActionResult<PlanResponse>> ActivatePlan(int id)
+    {
+        var plan = await _db.QueryFirstOrDefaultAsync<PlanResponse>(
+            "SELECT Id, Name, CreatedAt, IsActive FROM WorkoutPlans WHERE Id = @Id AND UserId = @UserId",
+            new { Id = id, UserId });
+
+        if (plan == null) return NotFound();
+
+        await DeactivateUserPlans();
+        await _db.ExecuteAsync(
+            "UPDATE WorkoutPlans SET IsActive = 1 WHERE Id = @Id",
+            new { Id = id });
+
+        plan.IsActive = true;
+        await PopulatePlanDays(plan);
+        return Ok(plan);
     }
 
     [HttpDelete]
     public async Task<IActionResult> DeletePlan()
     {
-        var rows = await DeleteUserPlans();
+        var rows = await _db.ExecuteAsync(
+            "DELETE FROM WorkoutPlans WHERE UserId = @UserId AND IsActive = 1",
+            new { UserId });
         return rows == 0 ? NotFound() : NoContent();
     }
 
-    private async Task<int> DeleteUserPlans()
+    private async Task DeactivateUserPlans()
     {
-        return await _db.ExecuteAsync(
-            "DELETE FROM WorkoutPlans WHERE UserId = @UserId",
+        await _db.ExecuteAsync(
+            "UPDATE WorkoutPlans SET IsActive = 0 WHERE UserId = @UserId AND IsActive = 1",
             new { UserId });
     }
 
     private async Task<int> InsertPlan(CreatePlanRequest request)
     {
         var planId = await _db.QuerySingleAsync<int>(
-            @"INSERT INTO WorkoutPlans (UserId, Name, CreatedAt)
+            @"INSERT INTO WorkoutPlans (UserId, Name, CreatedAt, IsActive)
               OUTPUT INSERTED.Id
-              VALUES (@UserId, @Name, SYSUTCDATETIME())",
+              VALUES (@UserId, @Name, SYSUTCDATETIME(), 1)",
             new { UserId, request.Name });
 
         foreach (var day in request.Days)
@@ -97,7 +129,7 @@ public class PlansController : ControllerBase
     private async Task<PlanResponse> GetPlanById(int planId)
     {
         var plan = await _db.QueryFirstAsync<PlanResponse>(
-            "SELECT Id, Name, CreatedAt FROM WorkoutPlans WHERE Id = @PlanId",
+            "SELECT Id, Name, CreatedAt, IsActive FROM WorkoutPlans WHERE Id = @PlanId",
             new { PlanId = planId });
 
         await PopulatePlanDays(plan);

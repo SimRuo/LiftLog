@@ -39,6 +39,9 @@ public static class DbInitializer
             );
         END
 
+        IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('WorkoutPlans') AND name = 'IsActive')
+            ALTER TABLE WorkoutPlans ADD IsActive BIT NOT NULL DEFAULT 0;
+
         IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'PlanDays')
         BEGIN
             CREATE TABLE PlanDays (

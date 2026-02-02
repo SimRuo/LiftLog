@@ -31,7 +31,7 @@ public class WorkoutsController : ControllerBase
               INNER JOIN PlanExercises pe ON pe.PlanDayId = d.Id
               INNER JOIN Exercises e ON e.Id = pe.ExerciseId
               WHERE p.UserId = @UserId
-                AND p.Id = (SELECT TOP 1 Id FROM WorkoutPlans WHERE UserId = @UserId ORDER BY CreatedAt DESC)
+                AND p.Id = (SELECT TOP 1 Id FROM WorkoutPlans WHERE UserId = @UserId AND IsActive = 1)
               ORDER BY d.[Order], pe.[Order]",
             (day, exercise) => { day.Exercises.Add(exercise); return day; },
             new { UserId },
@@ -56,6 +56,7 @@ public class WorkoutsController : ControllerBase
             @"SELECT TOP 1 d.[Order]
               FROM WorkoutSessions ws
               INNER JOIN PlanDays d ON d.Id = ws.PlanDayId
+              INNER JOIN WorkoutPlans p ON p.Id = d.WorkoutPlanId AND p.IsActive = 1
               WHERE ws.UserId = @UserId AND ws.PlanDayId IS NOT NULL
               ORDER BY ws.Date DESC, ws.CreatedAt DESC",
             new { UserId });
