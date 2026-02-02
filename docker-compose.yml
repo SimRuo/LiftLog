@@ -3,7 +3,7 @@ services:
     image: mcr.microsoft.com/mssql/server:2022-latest
     environment:
       ACCEPT_EULA: "Y"
-      MSSQL_SA_PASSWORD: "YourStrong!Passw0rd"
+      MSSQL_SA_PASSWORD: ${MSSQL_SA_PASSWORD}
     ports:
       - "1433:1433"
     volumes:
@@ -11,7 +11,7 @@ services:
     networks:
       - liftlog-network
     healthcheck:
-      test: /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P "YourStrong!Passw0rd" -C -Q "SELECT 1" || exit 1
+      test: /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P "${MSSQL_SA_PASSWORD}" -C -Q "SELECT 1" || exit 1
       interval: 10s
       timeout: 5s
       retries: 10
@@ -24,8 +24,8 @@ services:
     environment:
       ASPNETCORE_ENVIRONMENT: Production
       ASPNETCORE_URLS: "http://+:5000"
-      ConnectionStrings__DefaultConnection: "Server=db,1433;Database=LiftLog;User Id=sa;Password=YourStrong!Passw0rd;TrustServerCertificate=True"
-      Jwt__Key: "ProductionSecretKeyThatIsAtLeast32Characters!"
+      ConnectionStrings__DefaultConnection: "Server=db,1433;Database=LiftLog;User Id=sa;Password=${MSSQL_SA_PASSWORD};TrustServerCertificate=True"
+      Jwt__Key: ${JWT_KEY}
       Jwt__Issuer: "LiftLog"
       Jwt__Audience: "LiftLog"
     ports:
