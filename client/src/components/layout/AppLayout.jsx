@@ -11,7 +11,7 @@ import {
 import { useAuth } from '../../context/AuthContext';
 
 const navItems = [
-  { label: 'Workouts', icon: <ListAltRounded />, path: '/workouts' },
+  { label: 'Workouts', icon: <ListAltRounded />, path: '/workouts', exact: true },
   { label: 'Log', icon: <AddCircleRounded />, path: '/workouts/log' },
   { label: 'Plan', icon: <EventNoteRounded />, path: '/plan' },
   { label: 'Progress', icon: <ShowChartRounded />, path: '/progress' },
@@ -23,7 +23,9 @@ export default function AppLayout() {
   const { username, logout } = useAuth();
   const [anchorEl, setAnchorEl] = useState(null);
 
-  const currentNav = navItems.findIndex(item => location.pathname.startsWith(item.path));
+  const currentNav = navItems.findIndex(item =>
+    item.exact ? location.pathname === item.path : location.pathname.startsWith(item.path)
+  );
 
   const handleLogout = () => {
     setAnchorEl(null);
