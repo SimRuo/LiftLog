@@ -81,6 +81,16 @@ public class PlansController : ControllerBase
     [HttpDelete]
     public async Task<IActionResult> DeletePlan()
     {
+        // Clear PlanDayId references from sessions before deleting
+        await _db.ExecuteAsync(
+            @"UPDATE WorkoutSessions SET PlanDayId = NULL
+              WHERE PlanDayId IN (
+                  SELECT d.Id FROM PlanDays d
+                  INNER JOIN WorkoutPlans p ON p.Id = d.WorkoutPlanId
+                  WHERE p.UserId = @UserId AND p.IsActive = 1
+              )",
+            new { UserId });
+
         var rows = await _db.ExecuteAsync(
             "DELETE FROM WorkoutPlans WHERE UserId = @UserId AND IsActive = 1",
             new { UserId });
