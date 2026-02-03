@@ -302,7 +302,7 @@ export default function PlanEditPage() {
       </Button>
 
       <Button fullWidth variant="contained" startIcon={<SaveRounded />}
-        onClick={handleSave} disabled={saving} size="large">
+        onClick={handleSave} disabled={saving} size="large" sx={{ mb: 8 }}>
         {saving ? 'Saving...' : 'Save Plan'}
       </Button>
 
