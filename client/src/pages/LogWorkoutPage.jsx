@@ -313,7 +313,7 @@ export default function LogWorkoutPage() {
         </Card>
       ))}
 
-      <Stack spacing={1.5}>
+      <Stack spacing={1.5} sx={{ mb: 8 }}>
         <Button fullWidth variant="contained" startIcon={<SaveRounded />} onClick={handleSave} disabled={saving} size="large">
           {saving ? "Saving..." : "Save Workout"}
         </Button>
@@ -324,7 +324,6 @@ export default function LogWorkoutPage() {
           onClick={handleRestDay}
           disabled={saving}
           color="secondary"
-          sx={{ mb: 8 }}
         >
           Log Rest Day Instead
         </Button>
