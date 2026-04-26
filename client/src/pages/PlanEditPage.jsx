@@ -9,8 +9,10 @@ import {
   AddRounded, DeleteRounded, SaveRounded, DragIndicatorRounded,
   ArrowUpwardRounded, ArrowDownwardRounded
 } from '@mui/icons-material';
+import AutoAwesomeRounded from '@mui/icons-material/AutoAwesomeRounded';
 import { plansApi } from '../api/plans';
 import { exercisesApi } from '../api/exercises';
+import PlanGenerateDialog from '../components/ai/PlanGenerateDialog';
 
 const CREATE_PREFIX = 'create:';
 
@@ -23,6 +25,7 @@ export default function PlanEditPage() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
   const [isEdit, setIsEdit] = useState(false);
+  const [aiDialogOpen, setAiDialogOpen] = useState(false);
 
   // Create exercise dialog state
   const [createDialog, setCreateDialog] = useState({ open: false, name: '', dayIdx: -1 });
@@ -205,6 +208,25 @@ export default function PlanEditPage() {
     }
   };
 
+  const handleAiGenerate = (plan) => {
+    setPlanName(plan.name);
+    setDays(plan.days.map(d => ({
+      name: d.name,
+      exercises: (d.exercises || []).map(e => {
+        const match = allExercises.find(ex => ex.id === e.exerciseId);
+        return {
+          exerciseId: e.exerciseId,
+          exerciseName: match?.name ?? `Exercise #${e.exerciseId}`,
+          exerciseCategory: match?.category ?? '',
+          sets: e.sets,
+          reps: e.reps,
+          weight: e.weight,
+          notes: e.notes || '',
+        };
+      }),
+    })));
+  };
+
   const filterOptions = (options, { inputValue }) => {
     const input = inputValue.toLowerCase().trim();
     const filtered = options.filter(o =>
@@ -220,9 +242,19 @@ export default function PlanEditPage() {
 
   return (
     <Box>
-      <Typography variant="h5" fontWeight={700} sx={{ mb: 2 }}>
-        {isEdit ? 'Edit Plan' : 'Create Plan'}
-      </Typography>
+      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
+        <Typography variant="h5" fontWeight={700}>
+          {isEdit ? 'Edit Plan' : 'Create Plan'}
+        </Typography>
+        <Button
+          variant="outlined"
+          size="small"
+          startIcon={<AutoAwesomeRounded />}
+          onClick={() => setAiDialogOpen(true)}
+        >
+          Generate with AI
+        </Button>
+      </Box>
 
       {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
 
@@ -305,6 +337,12 @@ export default function PlanEditPage() {
         onClick={handleSave} disabled={saving} size="large" sx={{ mb: 8 }}>
         {saving ? 'Saving...' : 'Save Plan'}
       </Button>
+
+      <PlanGenerateDialog
+        open={aiDialogOpen}
+        onClose={() => setAiDialogOpen(false)}
+        onGenerate={handleAiGenerate}
+      />
 
       <Dialog open={createDialog.open} onClose={() => setCreateDialog({ open: false, name: '', dayIdx: -1 })}>
         <DialogTitle>Create Exercise: {createDialog.name}</DialogTitle>

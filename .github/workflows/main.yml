@@ -21,6 +21,7 @@ jobs:
           git pull origin main
           export MSSQL_SA_PASSWORD='${{ secrets.MSSQL_SA_PASSWORD }}'
           export JWT_KEY='${{ secrets.JWT_KEY }}'
+          export GEMINI_API_KEY='${{ secrets.GEMINI_API_KEY }}'
           docker compose down
           docker compose up -d --build
           docker compose logs --tail=50

@@ -2,13 +2,15 @@ import { useState } from 'react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import {
   AppBar, Toolbar, Typography, IconButton, BottomNavigation,
-  BottomNavigationAction, Box, Menu, MenuItem, Paper
+  BottomNavigationAction, Box, Menu, MenuItem, Paper, Fab
 } from '@mui/material';
 import {
   FitnessCenterRounded, AddCircleRounded, ListAltRounded,
   ShowChartRounded, AccountCircle, EventNoteRounded
 } from '@mui/icons-material';
+import AutoAwesomeRounded from '@mui/icons-material/AutoAwesomeRounded';
 import { useAuth } from '../../context/AuthContext';
+import AiChatDrawer from '../ai/AiChatDrawer';
 
 const navItems = [
   { label: 'Workouts', icon: <ListAltRounded />, path: '/workouts', exact: true },
@@ -22,6 +24,7 @@ export default function AppLayout() {
   const location = useLocation();
   const { username, logout } = useAuth();
   const [anchorEl, setAnchorEl] = useState(null);
+  const [chatOpen, setChatOpen] = useState(false);
 
   const currentNav = navItems.findIndex(item =>
     item.exact ? location.pathname === item.path : location.pathname.startsWith(item.path)
@@ -55,6 +58,17 @@ export default function AppLayout() {
       <Box sx={{ flex: 1, overflow: 'auto', pb: 8, px: 2, py: 2 }}>
         <Outlet />
       </Box>
+
+      <Fab
+        color="primary"
+        size="medium"
+        onClick={() => setChatOpen(true)}
+        sx={{ position: 'fixed', bottom: 72, right: 16, zIndex: 1200 }}
+      >
+        <AutoAwesomeRounded />
+      </Fab>
+
+      <AiChatDrawer open={chatOpen} onClose={() => setChatOpen(false)} />
 
       <Paper sx={{ position: 'fixed', bottom: 0, left: 0, right: 0 }} elevation={3}>
         <BottomNavigation

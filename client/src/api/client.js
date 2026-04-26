@@ -24,7 +24,9 @@ async function request(path, options = {}) {
 
   if (!res.ok) {
     const body = await res.text();
-    throw new Error(body || res.statusText);
+    const err = new Error(body || res.statusText);
+    err.status = res.status;
+    throw err;
   }
 
   if (res.status === 204) return null;

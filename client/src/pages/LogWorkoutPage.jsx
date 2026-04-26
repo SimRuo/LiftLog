@@ -70,8 +70,10 @@ export default function LogWorkoutPage() {
         );
       })
       .catch((err) => {
-        if (err.message.includes("404") || err.message.includes("Not Found")) {
+        if (err.status === 404) {
           setNoPlan(true);
+        } else {
+          setError(err.message || "Failed to load next workout");
         }
       })
       .finally(() => setLoading(false));
