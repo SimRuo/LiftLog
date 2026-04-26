@@ -31,24 +31,29 @@ public class AiController : ControllerBase
               ORDER BY Category, Name",
             new { UserId })).ToList();
 
-        var plan = await _gemini.GeneratePlan(request.Description, exercises);
-        if (plan == null)
-            return StatusCode(500, "AI failed to generate a plan");
-
-        // Validate all returned exercise IDs actually exist for this user
-        var validIds = exercises.Select(e => e.Id).ToHashSet();
-        foreach (var day in plan.Days)
-            day.Exercises = day.Exercises.Where(e => validIds.Contains(e.ExerciseId)).ToList();
-
-        // Re-index orders to match array position
-        for (var i = 0; i < plan.Days.Count; i++)
+        try
         {
-            plan.Days[i].Order = i;
-            for (var j = 0; j < plan.Days[i].Exercises.Count; j++)
-                plan.Days[i].Exercises[j].Order = j;
-        }
+            var plan = await _gemini.GeneratePlan(request.Description, exercises);
+            if (plan == null)
+                return StatusCode(500, "AI returned an empty response");
 
-        return Ok(plan);
+            var validIds = exercises.Select(e => e.Id).ToHashSet();
+            foreach (var day in plan.Days)
+                day.Exercises = day.Exercises.Where(e => validIds.Contains(e.ExerciseId)).ToList();
+
+            for (var i = 0; i < plan.Days.Count; i++)
+            {
+                plan.Days[i].Order = i;
+                for (var j = 0; j < plan.Days[i].Exercises.Count; j++)
+                    plan.Days[i].Exercises[j].Order = j;
+            }
+
+            return Ok(plan);
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, $"AI request failed: {ex.Message}");
+        }
     }
 
     [HttpPost("advice")]
@@ -57,9 +62,16 @@ public class AiController : ControllerBase
         if (string.IsNullOrWhiteSpace(request.Message))
             return BadRequest("Message is required");
 
-        var planContext = await BuildPlanContext();
-        var reply = await _gemini.GetAdvice(request.Message, request.History, planContext);
-        return Ok(new AdviceResponse { Message = reply });
+        try
+        {
+            var planContext = await BuildPlanContext();
+            var reply = await _gemini.GetAdvice(request.Message, request.History, planContext);
+            return Ok(new AdviceResponse { Message = reply });
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, $"AI request failed: {ex.Message}");
+        }
     }
 
     private async Task<string?> BuildPlanContext()
