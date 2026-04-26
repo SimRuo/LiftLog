@@ -25,4 +25,5 @@ jobs:
           export GEMINI_API_KEY='${{ secrets.GEMINI_API_KEY }}'
           docker compose down
           docker compose up -d --build
-          docker compose logs --tail=50
+          sleep 5
+          docker compose logs backend --tail=400
