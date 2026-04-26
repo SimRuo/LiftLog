@@ -15,8 +15,8 @@ namespace server.Controllers;
 public class AiController : ControllerBase
 {
     private readonly IDbConnection _db;
-    private readonly GeminiService _gemini;
-    public AiController(IDbConnection db, GeminiService gemini) => (_db, _gemini) = (db, gemini);
+    private readonly GroqService _groq;
+    public AiController(IDbConnection db, GroqService groq) => (_db, _groq) = (db, groq);
     private string UserId => User.FindFirstValue(ClaimTypes.NameIdentifier)!;
 
     [HttpPost("generate-plan")]
@@ -33,7 +33,7 @@ public class AiController : ControllerBase
 
         try
         {
-            var plan = await _gemini.GeneratePlan(request.Description, exercises);
+            var plan = await _groq.GeneratePlan(request.Description, exercises);
             if (plan == null)
                 return StatusCode(500, "AI returned an empty response");
 
@@ -65,7 +65,7 @@ public class AiController : ControllerBase
         try
         {
             var planContext = await BuildPlanContext();
-            var reply = await _gemini.GetAdvice(request.Message, request.History, planContext);
+            var reply = await _groq.GetAdvice(request.Message, request.History, planContext);
             return Ok(new AdviceResponse { Message = reply });
         }
         catch (Exception ex)

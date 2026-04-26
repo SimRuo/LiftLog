@@ -28,7 +28,7 @@ services:
       Jwt__Key: ${JWT_KEY}
       Jwt__Issuer: "LiftLog"
       Jwt__Audience: "LiftLog"
-      Gemini__ApiKey: ${GEMINI_API_KEY}
+      Groq__ApiKey: ${GROQ_API_KEY}
     ports:
       - "5000:5000"
     depends_on:

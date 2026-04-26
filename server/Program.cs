@@ -51,7 +51,7 @@ builder.Services.AddAuthentication(options =>
     };
 });
 
-builder.Services.AddHttpClient<server.Services.GeminiService>();
+builder.Services.AddHttpClient<server.Services.GroqService>();
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(c =>

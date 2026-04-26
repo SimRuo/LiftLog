@@ -13,3 +13,4 @@ server/obj/
 .DS_Store
 Thumbs.db
 PLAN.md
+.env
