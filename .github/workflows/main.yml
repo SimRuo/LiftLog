@@ -18,6 +18,7 @@ jobs:
         port: 2233
         script: |
           cd ~/LiftLog
+          git reset --hard HEAD
           git pull origin main
           export MSSQL_SA_PASSWORD='${{ secrets.MSSQL_SA_PASSWORD }}'
           export JWT_KEY='${{ secrets.JWT_KEY }}'
