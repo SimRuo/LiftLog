@@ -11,7 +11,6 @@ import {
   Menu,
   MenuItem,
   Paper,
-  Fab,
   Divider,
   Chip,
 } from '@mui/material';
@@ -24,9 +23,7 @@ import {
   EventNoteRounded,
   CloudOffRounded,
 } from '@mui/icons-material';
-import AutoAwesomeRounded from '@mui/icons-material/AutoAwesomeRounded';
 import { useAuth } from '../../context/auth-context';
-import AiChatDrawer from '../ai/AiChatDrawer';
 import RestTimerBar from '../workout/RestTimerBar';
 import { Label } from '../ui/Bits';
 import { ink } from '../../theme';
@@ -43,7 +40,6 @@ export default function AppLayout() {
   const location = useLocation();
   const { username, logout } = useAuth();
   const [anchorEl, setAnchorEl] = useState(null);
-  const [chatOpen, setChatOpen] = useState(false);
   const [online, setOnline] = useState(navigator.onLine);
 
   // Being told you're offline before you tap Save is worth a lot more than
@@ -68,10 +64,6 @@ export default function AppLayout() {
     logout();
     navigate('/login');
   };
-
-  // The AI drawer is a nice-to-have; it should not float over the rest timer or
-  // the finish button on the screen where every pixel is doing a job.
-  const onTrainingScreen = location.pathname === '/workouts/log';
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: '100dvh' }}>
@@ -124,27 +116,6 @@ export default function AppLayout() {
       >
         <Outlet />
       </Box>
-
-      {!onTrainingScreen && (
-        <>
-          <Fab
-            color="primary"
-            size="medium"
-            onClick={() => setChatOpen(true)}
-            aria-label="Ask the coach"
-            sx={{
-              position: 'fixed',
-              bottom: 'calc(76px + env(safe-area-inset-bottom))',
-              right: 16,
-              zIndex: 1100,
-              borderRadius: 0,
-            }}
-          >
-            <AutoAwesomeRounded />
-          </Fab>
-          <AiChatDrawer open={chatOpen} onClose={() => setChatOpen(false)} />
-        </>
-      )}
 
       <RestTimerBar />
 
