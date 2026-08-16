@@ -98,10 +98,12 @@ public class ExerciseResolver
         // asking for the same new exercise don't create it twice.
         var byName = new Dictionary<string, int>();
         var byCompact = new Dictionary<string, int>();
+        var known = new Dictionary<int, ExerciseInfo>();
         foreach (var e in catalogue)
         {
             byName.TryAdd(Normalise(e.Name), e.Id);
             byCompact.TryAdd(Compact(e.Name), e.Id);
+            known.TryAdd(e.Id, e);
         }
 
         var plan = new CreatePlanRequest { Name = generated.Name, Days = new List<CreatePlanDayRequest>() };
@@ -116,12 +118,15 @@ public class ExerciseResolver
 
             foreach (var item in day.Exercises)
             {
-                var id = await ResolveOne(item, userId, byName, byCompact, ct);
+                var id = await ResolveOne(item, userId, byName, byCompact, known, ct);
                 if (id is null) continue;
 
+                var info = known.GetValueOrDefault(id.Value);
                 planDay.Exercises.Add(new CreatePlanExerciseRequest
                 {
                     ExerciseId = id.Value,
+                    ExerciseName = info?.Name,
+                    ExerciseCategory = info?.Category,
                     Sets = item.Sets,
                     Reps = item.Reps,
                     Notes = item.Notes,
@@ -139,6 +144,7 @@ public class ExerciseResolver
         string userId,
         Dictionary<string, int> byName,
         Dictionary<string, int> byCompact,
+        Dictionary<int, ExerciseInfo> known,
         CancellationToken ct)
     {
         var key = Normalise(item.Exercise);
@@ -157,6 +163,7 @@ public class ExerciseResolver
 
         byName[key] = id;
         byCompact[Compact(name)] = id;
+        known[id] = new ExerciseInfo(id, name, category);
         return id;
     }
 

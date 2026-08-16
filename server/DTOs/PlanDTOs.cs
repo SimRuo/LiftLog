@@ -28,6 +28,17 @@ public class CreatePlanExerciseRequest
     [Required]
     public int ExerciseId { get; set; }
 
+    /// <summary>
+    /// Populated on the way out of plan generation; ignored on the way in.
+    ///
+    /// Generation can create exercises, so the id alone is not enough for a
+    /// client whose catalogue predates them — it would render "Exercise #1051".
+    /// The resolver has just looked these up, so sending them costs nothing and
+    /// removes the client's dependency on having a fresh catalogue.
+    /// </summary>
+    public string? ExerciseName { get; set; }
+    public string? ExerciseCategory { get; set; }
+
     public int Order { get; set; }
 
     [Required, Range(1, 20)]

@@ -168,18 +168,17 @@ export default function PlanEditPage() {
   };
 
   const handleAiGenerate = async (plan) => {
-    // Generation can create exercises that didn't exist when this page loaded —
-    // that's the point of it — so the catalogue has to be re-read before the
-    // ids in the plan are turned back into names. Without this, anything newly
-    // created renders as "Exercise #57".
+    // Names come back with the plan, because generation can create exercises
+    // this page has never heard of. The catalogue lookup is only a fallback for
+    // older responses; the refetch keeps the "add exercise" list current so
+    // anything just created is selectable too.
     let catalogue = allExercises;
     try {
       const categories = await exercisesApi.list();
       catalogue = categories.flatMap((c) => c.exercises.map((ex) => ({ ...ex, category: c.category })));
       setAllExercises(catalogue);
     } catch {
-      // Fall back to what we already have; worst case a new exercise shows
-      // its id until the page is reloaded.
+      // Not fatal — the plan already carries its own names.
     }
 
     setPlanName(plan.name);
@@ -190,8 +189,8 @@ export default function PlanEditPage() {
           const match = catalogue.find((ex) => ex.id === e.exerciseId);
           return {
             exerciseId: e.exerciseId,
-            exerciseName: match?.name ?? `Exercise #${e.exerciseId}`,
-            exerciseCategory: match?.category ?? '',
+            exerciseName: e.exerciseName || match?.name || `Exercise #${e.exerciseId}`,
+            exerciseCategory: e.exerciseCategory || match?.category || '',
             sets: e.sets,
             reps: e.reps,
             weight: e.weight,
