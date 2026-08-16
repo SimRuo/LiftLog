@@ -77,8 +77,9 @@ public class PlanGenerationWorker : BackgroundService
         using var scope = _scopes.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<IDbConnection>();
         var generator = scope.ServiceProvider.GetRequiredService<IPlanGenerator>();
+        var resolver = scope.ServiceProvider.GetRequiredService<ExerciseResolver>();
 
-        var exercises = (await db.QueryAsync<ExerciseInfo>(
+        var catalogue = (await db.QueryAsync<ExerciseInfo>(
             new CommandDefinition(
                 @"SELECT Id, Name, Category FROM Exercises
                   WHERE IsDefault = 1 OR CreatedByUserId = @UserId
@@ -86,10 +87,12 @@ public class PlanGenerationWorker : BackgroundService
                 new { job.UserId },
                 cancellationToken: ct))).ToList();
 
-        if (exercises.Count == 0)
-            throw new InvalidOperationException("There are no exercises to build a plan from.");
+        // The model works in names; turning those into ids — and creating the
+        // ones that don't exist yet — happens here, deterministically.
+        var generated = await generator.GeneratePlan(job.Description, catalogue);
+        if (generated is null) return null;
 
-        var plan = await generator.GeneratePlan(job.Description, exercises);
-        return plan is null ? null : PlanNormaliser.Normalise(plan, exercises);
+        var plan = await resolver.ResolveAsync(generated, job.UserId, ct);
+        return PlanNormaliser.Normalise(plan);
     }
 }

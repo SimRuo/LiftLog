@@ -104,32 +104,96 @@ public static class DbInitializer
         END
     ";
 
+    // Insert-what's-missing rather than seed-once-if-empty.
+    //
+    // The original guard was `IF NOT EXISTS (... WHERE IsDefault = 1)`, which
+    // means any database that already ran it will never see a new default
+    // again — so growing this list would have been a no-op everywhere it
+    // mattered. Matching per name instead makes the list a live source of
+    // truth that can be extended.
+    //
+    // No IDENTITY_INSERT either: user-created exercises take identity values
+    // from 21 up, so hardcoding ids for new defaults would collide with them.
     private const string SeedExercisesSql = @"
-        IF NOT EXISTS (SELECT 1 FROM Exercises WHERE IsDefault = 1)
-        BEGIN
-            SET IDENTITY_INSERT Exercises ON;
-            INSERT INTO Exercises (Id, Name, Category, IsDefault) VALUES
-                (1,  'Bench Press',          'Chest',     1),
-                (2,  'Incline Bench Press',  'Chest',     1),
-                (3,  'Dumbbell Fly',         'Chest',     1),
-                (4,  'Squat',                'Legs',      1),
-                (5,  'Leg Press',            'Legs',      1),
-                (6,  'Romanian Deadlift',    'Legs',      1),
-                (7,  'Leg Curl',             'Legs',      1),
-                (8,  'Calf Raise',           'Legs',      1),
-                (9,  'Deadlift',             'Back',      1),
-                (10, 'Barbell Row',          'Back',      1),
-                (11, 'Pull-ups',             'Back',      1),
-                (12, 'Lat Pulldown',         'Back',      1),
-                (13, 'Seated Cable Row',     'Back',      1),
-                (14, 'Overhead Press',       'Shoulders', 1),
-                (15, 'Lateral Raise',        'Shoulders', 1),
-                (16, 'Face Pull',            'Shoulders', 1),
-                (17, 'Barbell Curl',         'Arms',      1),
-                (18, 'Tricep Pushdown',      'Arms',      1),
-                (19, 'Hammer Curl',          'Arms',      1),
-                (20, 'Plank',                'Core',      1);
-            SET IDENTITY_INSERT Exercises OFF;
-        END
+        INSERT INTO Exercises (Name, Category, IsDefault)
+        SELECT v.Name, v.Category, 1
+        FROM (VALUES
+            ('Bench Press',                'Chest'),
+            ('Incline Bench Press',        'Chest'),
+            ('Decline Bench Press',        'Chest'),
+            ('Dumbbell Bench Press',       'Chest'),
+            ('Incline Dumbbell Press',     'Chest'),
+            ('Chest Press Machine',        'Chest'),
+            ('Incline Chest Press Machine','Chest'),
+            ('Dumbbell Fly',               'Chest'),
+            ('Cable Fly',                  'Chest'),
+            ('Pec Deck',                   'Chest'),
+            ('Dumbbell Pullover',          'Chest'),
+            ('Push-ups',                   'Chest'),
+            ('Chest Dip',                  'Chest'),
+
+            ('Deadlift',                   'Back'),
+            ('Barbell Row',                'Back'),
+            ('Pendlay Row',                'Back'),
+            ('Dumbbell Row',               'Back'),
+            ('T-Bar Row',                  'Back'),
+            ('Chest Supported Row',        'Back'),
+            ('Seated Cable Row',           'Back'),
+            ('Machine Row',                'Back'),
+            ('Lat Pulldown',               'Back'),
+            ('Machine Lat Pulldown',       'Back'),
+            ('Straight Arm Pulldown',      'Back'),
+            ('Pull-ups',                   'Back'),
+            ('Chin-ups',                   'Back'),
+            ('Back Extension',             'Back'),
+            ('Shrug',                      'Back'),
+
+            ('Squat',                      'Legs'),
+            ('Front Squat',                'Legs'),
+            ('Hack Squat',                 'Legs'),
+            ('Leg Press',                  'Legs'),
+            ('Single Leg Press',           'Legs'),
+            ('Leg Extension',              'Legs'),
+            ('Leg Curl',                   'Legs'),
+            ('Seated Leg Curl',            'Legs'),
+            ('Lying Leg Curl',             'Legs'),
+            ('Romanian Deadlift',          'Legs'),
+            ('Bulgarian Split Squat',      'Legs'),
+            ('Lunge',                      'Legs'),
+            ('Hip Thrust',                 'Legs'),
+            ('Good Morning',               'Legs'),
+            ('Calf Raise',                 'Legs'),
+            ('Seated Calf Raise',          'Legs'),
+
+            ('Overhead Press',             'Shoulders'),
+            ('Seated Dumbbell Press',      'Shoulders'),
+            ('Machine Shoulder Press',     'Shoulders'),
+            ('Lateral Raise',              'Shoulders'),
+            ('Cable Lateral Raise',        'Shoulders'),
+            ('Rear Delt Fly',              'Shoulders'),
+            ('Face Pull',                  'Shoulders'),
+            ('Upright Row',                'Shoulders'),
+
+            ('Barbell Curl',               'Arms'),
+            ('EZ Bar Curl',                'Arms'),
+            ('Dumbbell Curl',              'Arms'),
+            ('Incline Dumbbell Curl',      'Arms'),
+            ('Hammer Curl',                'Arms'),
+            ('Cable Curl',                 'Arms'),
+            ('Preacher Curl',              'Arms'),
+            ('Tricep Pushdown',            'Arms'),
+            ('Overhead Tricep Extension',  'Arms'),
+            ('Skullcrusher',               'Arms'),
+            ('Close Grip Bench Press',     'Arms'),
+            ('Tricep Dip',                 'Arms'),
+
+            ('Plank',                      'Core'),
+            ('Side Plank',                 'Core'),
+            ('Crunch',                     'Core'),
+            ('Cable Crunch',               'Core'),
+            ('Hanging Leg Raise',          'Core'),
+            ('Ab Wheel Rollout',           'Core')
+        ) AS v(Name, Category)
+        WHERE NOT EXISTS (SELECT 1 FROM Exercises e WHERE e.Name = v.Name);
     ";
 }

@@ -1,21 +1,17 @@
 using System.Net.Http.Headers;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using server.DTOs;
 
 namespace server.Services;
 
 /// <summary>
-/// The previous hosted path, kept behind the `Ai:Provider` switch so the local
-/// model can be compared against it without a redeploy. The advice chat this
-/// service also used to serve has been removed — a small local model is a poor
-/// substitute for open-ended coaching, so rather than ship a worse version of
-/// it, it's gone.
+/// The hosted path, kept behind the `Ai:Provider` switch so the local model can
+/// be compared against it without a redeploy.
 ///
-/// Note the difference in approach: with no grammar available, the response
-/// shape has to be described in prose and the exercise IDs merely requested,
-/// which is why this path needs a 70B model to be reliable and still gets
-/// filtered by the caller afterwards.
+/// Same contract as the local generator — names out, resolved server-side —
+/// but the shape has to be described in prose because there is no grammar to
+/// enforce it, which is why this path wants a large model and still can't
+/// promise the response parses.
 /// </summary>
 public class GroqPlanGenerator : IPlanGenerator
 {
@@ -34,27 +30,26 @@ public class GroqPlanGenerator : IPlanGenerator
         _model = config["Groq:Model"] ?? "llama-3.3-70b-versatile";
     }
 
-    public async Task<CreatePlanRequest?> GeneratePlan(string description, List<ExerciseInfo> exercises)
+    public async Task<GeneratedPlan?> GeneratePlan(string description, List<ExerciseInfo> catalogue)
     {
-        var exerciseList = string.Join("\n", exercises.Select(e => $"ID:{e.Id} | {e.Name} | {e.Category}"));
+        var known = string.Join("\n", catalogue.Select(e => $"{e.Name} ({e.Category})"));
+        var categories = string.Join(", ", PlanSchema.Categories);
 
-        var system = """
-            You are a professional fitness coach. Generate structured workout plans as JSON.
+        var system = $$"""
+            You are a strength coach transcribing a training plan.
             Output strictly this shape, no extra keys, no prose:
             {
               "name": string,
               "days": [
                 {
                   "name": string,
-                  "order": integer (0-based),
                   "exercises": [
                     {
-                      "exerciseId": integer (must be from the provided list),
-                      "order": integer (0-based),
-                      "sets": integer (1-6),
+                      "exercise": string,
+                      "category": one of [{{categories}}],
+                      "sets": integer,
                       "reps": string (e.g. "8-12" or "5"),
-                      "weight": number (always 0),
-                      "notes": string
+                      "notes": string (optional)
                     }
                   ]
                 }
@@ -63,15 +58,18 @@ public class GroqPlanGenerator : IPlanGenerator
             """;
 
         var user = $"""
-            Create a workout plan based on this request: {description}
+            Known exercises:
+            {known}
 
-            You MUST only use exercises from this exact list (use the exact numeric ID):
-            {exerciseList}
+            The user wants:
+            {description}
 
-            Set weight to 0 for all exercises — the user fills in their own weights.
-            Reps can be a range like "8-12" or a single number like "5".
-            Sets should be between 1 and 6.
-            Order values are 0-based array indexes.
+            If an exercise the user names is in the known list, use that exact
+            name. If it is not, write their name for it — it will be added.
+            Never substitute a different exercise for a missing one.
+
+            Follow the user's structure exactly if they gave you one. Put loads,
+            stopping rules and other detail in "notes".
             """;
 
         var body = new
@@ -92,7 +90,7 @@ public class GroqPlanGenerator : IPlanGenerator
 
         return string.IsNullOrEmpty(text)
             ? null
-            : JsonSerializer.Deserialize<CreatePlanRequest>(text, CaseInsensitive);
+            : JsonSerializer.Deserialize<GeneratedPlan>(text, CaseInsensitive);
     }
 }
 

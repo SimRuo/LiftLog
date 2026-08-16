@@ -1,7 +1,5 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using server.DTOs;
-
 namespace server.Services;
 
 /// <summary>
@@ -16,6 +14,8 @@ namespace server.Services;
 ///   - `order` and `weight` are left out of the schema entirely; the caller
 ///     assigns order from array position and weight is always 0, so having the
 ///     model write them would be pure latency
+///   - exercise ids are left out too: the model names exercises and the server
+///     resolves the names, which is both faster and far more accurate
 /// </summary>
 public class OllamaPlanGenerator : IPlanGenerator
 {
@@ -47,31 +47,41 @@ public class OllamaPlanGenerator : IPlanGenerator
         _contextTokens = int.TryParse(config["Ollama:ContextTokens"], out var n) ? n : 8192;
     }
 
-    public async Task<CreatePlanRequest?> GeneratePlan(string description, List<ExerciseInfo> exercises)
+    public async Task<GeneratedPlan?> GeneratePlan(string description, List<ExerciseInfo> catalogue)
     {
-        var catalogue = string.Join("\n", exercises.Select(e => $"{e.Id}\t{e.Name}\t{e.Category}"));
+        var known = string.Join("\n", catalogue.Select(e => $"{e.Name} ({e.Category})"));
 
         var system = """
-            You are a strength coach building a training plan.
+            You are a strength coach transcribing a training plan.
 
-            You will be given a catalogue of available exercises as
-            "id<TAB>name<TAB>muscle group" lines, and a description of what the
-            user wants. Build a plan that matches the description.
+            You will be given a list of known exercises and a description of the
+            plan the user wants. Return the plan.
 
-            Rules:
-            - Use only exercises from the catalogue.
-            - Name each day for what it trains, e.g. "Push A" or "Lower — quads".
-            - Pick a rep range appropriate to the exercise and the user's goal.
-              Compounds lower, isolations higher. Write it as "5-8" or "10".
-            - Respect the number of days and the weekly structure the user asks
-              for. If they don't say, use 4 days.
-            - Use the notes field only when there is a real cue worth recording,
-              such as a stopping rule or a tempo. Otherwise leave it out.
+            Naming exercises:
+            - If the user names an exercise that appears in the known list, use
+              that exact name. Do not substitute a different exercise for one
+              that is already in the list.
+            - If the user names an exercise that is NOT in the known list, write
+              their name for it. It will be added. Never swap in a different
+              exercise because the one asked for is missing — a back extension
+              is not a squat, and a leg extension is not a leg curl.
+            - Set "category" to the muscle group the exercise trains. It is only
+              used when the exercise is new.
+
+            The rest:
+            - Follow the user's structure exactly: the same number of days, the
+              same exercises in the same order, the same sets and reps. If they
+              gave you a plan, transcribe it — do not redesign it.
+            - If they described a goal rather than a plan, build one. Compounds
+              get lower reps, isolations higher. Default to 4 days.
+            - Write reps as given, e.g. "5-8" or "10".
+            - Put anything else worth keeping in "notes" — loads, stopping
+              rules, tempo, "per side", "optional". Otherwise leave it out.
             """;
 
         var user = $"""
-            Available exercises:
-            {catalogue}
+            Known exercises:
+            {known}
 
             The user wants:
             {description}
@@ -81,9 +91,9 @@ public class OllamaPlanGenerator : IPlanGenerator
         {
             model = _model,
             stream = false,
-            // The grammar is built from this user's actual exercise IDs, so a
-            // hallucinated exercise is not a thing the sampler can produce.
-            format = PlanSchema.Build(exercises.Select(e => e.Id)),
+            // Guarantees the shape and the category vocabulary. Exercise names
+            // are free text on purpose — see PlanSchema.
+            format = PlanSchema.Build(),
             keep_alive = _keepAlive,
             options = new
             {
@@ -123,7 +133,7 @@ public class OllamaPlanGenerator : IPlanGenerator
 
         try
         {
-            return JsonSerializer.Deserialize<CreatePlanRequest>(content, CaseInsensitive);
+            return JsonSerializer.Deserialize<GeneratedPlan>(content, CaseInsensitive);
         }
         catch (JsonException ex)
         {

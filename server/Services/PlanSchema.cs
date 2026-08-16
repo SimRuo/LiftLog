@@ -1,68 +1,64 @@
 namespace server.Services;
 
 /// <summary>
-/// The JSON Schema describing a plan, with the exercise IDs baked in as an enum.
+/// The JSON Schema describing a generated plan, compiled to a grammar that
+/// constrains the sampler.
 ///
-/// This is the whole reason a 4B model on a CPU is enough for this job. The
-/// schema is compiled into a grammar that constrains the sampler, so:
+/// What it still guarantees: the response is structurally valid JSON with the
+/// right keys, and every category is one the app knows about. That is what
+/// lets a 4B model on a CPU do this job at all — it never has to spend tokens
+/// getting braces right, and there is no parse-and-retry loop.
 ///
-///   - structurally invalid JSON is unreachable, rather than something we hope
-///     for and retry on
-///   - an exercise ID that isn't in the user's catalogue is unreachable, rather
-///     than something we filter out afterwards and silently drop from the plan
-///
-/// What's left for the model is a selection problem — which of these forty
-/// exercises, how many sets, what rep range — which is well within a small
-/// model's ability. Asking it to also produce well-formed JSON from a prose
-/// description of the shape, the way the Groq prompt does, is what would need
-/// a 70B.
+/// What it deliberately no longer constrains is which exercise. That used to
+/// be an enum of catalogue ids, which made an invalid id impossible but a
+/// *wrong* id mandatory whenever the exercise the user wanted wasn't in the
+/// list. A free-text name can be resolved against the catalogue exactly, and
+/// created when it genuinely is new — see <see cref="ExerciseResolver"/>.
 /// </summary>
 public static class PlanSchema
 {
-    public static object Build(IEnumerable<int> exerciseIds)
-    {
-        var ids = exerciseIds.ToArray();
+    public static readonly string[] Categories =
+        ["Chest", "Back", "Legs", "Shoulders", "Arms", "Core"];
 
-        return new
+    public static object Build() => new
+    {
+        type = "object",
+        required = new[] { "name", "days" },
+        properties = new
         {
-            type = "object",
-            required = new[] { "name", "days" },
-            properties = new
+            name = new { type = "string" },
+            days = new
             {
-                name = new { type = "string" },
-                days = new
+                type = "array",
+                minItems = 1,
+                items = new
                 {
-                    type = "array",
-                    minItems = 1,
-                    items = new
+                    type = "object",
+                    required = new[] { "name", "exercises" },
+                    properties = new
                     {
-                        type = "object",
-                        required = new[] { "name", "exercises" },
-                        properties = new
+                        name = new { type = "string" },
+                        exercises = new
                         {
-                            name = new { type = "string" },
-                            exercises = new
+                            type = "array",
+                            minItems = 1,
+                            items = new
                             {
-                                type = "array",
-                                minItems = 1,
-                                items = new
+                                type = "object",
+                                required = new[] { "exercise", "category", "sets", "reps" },
+                                properties = new
                                 {
-                                    type = "object",
-                                    required = new[] { "exerciseId", "sets", "reps" },
-                                    properties = new
-                                    {
-                                        // The constraint that matters most.
-                                        exerciseId = new { type = "integer", @enum = ids },
-                                        sets = new { type = "integer" },
-                                        reps = new { type = "string" },
-                                        notes = new { type = "string" }
-                                    }
+                                    exercise = new { type = "string" },
+                                    category = new { type = "string", @enum = Categories },
+                                    sets = new { type = "integer" },
+                                    reps = new { type = "string" },
+                                    notes = new { type = "string" }
                                 }
                             }
                         }
                     }
                 }
             }
-        };
-    }
+        }
+    };
 }

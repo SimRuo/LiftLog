@@ -64,6 +64,8 @@ else
 // time so two generations can't contend for the same four cores.
 builder.Services.AddSingleton<server.Services.PlanJobStore>();
 builder.Services.AddHostedService<server.Services.PlanGenerationWorker>();
+// Scoped, because it holds the request-scoped IDbConnection.
+builder.Services.AddScoped<server.Services.ExerciseResolver>();
 
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();

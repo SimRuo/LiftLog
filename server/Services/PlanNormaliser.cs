@@ -4,7 +4,7 @@ namespace server.Services;
 
 /// <summary>
 /// Fills in the parts of a plan the model was deliberately not asked for, and
-/// re-checks the parts it was.
+/// bounds the parts it was.
 /// </summary>
 public static class PlanNormaliser
 {
@@ -13,15 +13,14 @@ public static class PlanNormaliser
     /// lifter supplies their own — asking a model generating at ten tokens a
     /// second to write those out would be pure latency.
     ///
-    /// The ID filter and the set clamp are redundant under the Ollama path,
-    /// where the grammar already guarantees valid IDs. They stay because the
-    /// Groq path has no such guarantee, and because a validation failure in
-    /// PlansController later is a far worse way to discover the problem.
+    /// The clamping and truncation exist because a validation failure inside
+    /// PlansController later would be a far worse way to discover that a model
+    /// asked for 400 sets or wrote an essay in the reps field. Exercise ids
+    /// need no checking: ExerciseResolver only ever returns rows it has just
+    /// read or written.
     /// </summary>
-    public static CreatePlanRequest Normalise(CreatePlanRequest plan, List<ExerciseInfo> exercises)
+    public static CreatePlanRequest Normalise(CreatePlanRequest plan)
     {
-        var validIds = exercises.Select(e => e.Id).ToHashSet();
-
         plan.Name = Truncate(plan.Name, 100, "Generated plan");
         plan.Days = plan.Days.Where(d => d.Exercises.Count > 0).ToList();
 
@@ -30,7 +29,6 @@ public static class PlanNormaliser
             var day = plan.Days[i];
             day.Order = i;
             day.Name = Truncate(day.Name, 100, $"Day {i + 1}");
-            day.Exercises = day.Exercises.Where(e => validIds.Contains(e.ExerciseId)).ToList();
 
             for (var j = 0; j < day.Exercises.Count; j++)
             {
@@ -43,8 +41,6 @@ public static class PlanNormaliser
             }
         }
 
-        // Days can empty out if everything in them was filtered.
-        plan.Days = plan.Days.Where(d => d.Exercises.Count > 0).ToList();
         return plan;
     }
 
