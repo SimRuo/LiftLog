@@ -16,7 +16,11 @@ jobs:
         username: ${{ secrets.SERVER_USER }}
         key: ${{ secrets.SERVER_SSH_KEY }}
         port: 2233
+        # The default is 10m, and the first deploy after adding Ollama spends
+        # most of that pulling a 2.5GB model before the build even settles.
+        command_timeout: 30m
         script: |
+          set -e
           cd ~/LiftLog
           git reset --hard HEAD
           git pull origin main
@@ -27,6 +31,12 @@ jobs:
           # Idempotent: a no-op once the model is in the ollama-models volume,
           # which survives `compose down`. Only the first deploy pays the ~2.5GB
           # download. Keep this tag in step with Ollama__Model in the compose file.
-          docker compose exec -T ollama ollama pull qwen3:4b-instruct
+          # Output is discarded because the progress bar is a TTY animation:
+          # in a non-interactive log it prints every frame plus its cursor
+          # escape codes, thousands of lines of it. `set -e` still fails the
+          # deploy if the pull itself fails, and `list` gives us the one line
+          # actually worth having.
+          docker compose exec -T ollama ollama pull qwen3:4b-instruct > /dev/null 2>&1
+          docker compose exec -T ollama ollama list
           sleep 5
           docker compose logs backend --tail=400
