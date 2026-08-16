@@ -16,8 +16,8 @@ export default defineConfig({
         name: 'LiftLog',
         short_name: 'LiftLog',
         description: 'Track your workouts and progress',
-        theme_color: '#0a1929',
-        background_color: '#0a1929',
+        theme_color: '#08080a',
+        background_color: '#08080a',
         display: 'standalone',
         orientation: 'portrait',
         icons: [
@@ -27,16 +27,19 @@ export default defineConfig({
         ],
       },
       workbox: {
-        runtimeCaching: [
-          {
-            urlPattern: /^\/api\/.*/i,
-            handler: 'NetworkFirst',
-            options: {
-              cacheName: 'api-cache',
-              expiration: { maxEntries: 100, maxAgeSeconds: 60 * 60 * 24 },
-            },
-          },
-        ],
+        // The app shell is precached; API responses deliberately are not.
+        //
+        // The previous NetworkFirst rule cached authenticated GETs in a store
+        // that outlives the session, so after signing out — or signing in as
+        // someone else — a failed request could be answered from another
+        // account's cached data. It also meant a workout you just saved could
+        // be hidden behind a 24h-stale list.
+        //
+        // Offline resilience comes from the in-progress workout draft in
+        // localStorage instead, which is the only data that actually matters
+        // to keep when the signal drops mid-session.
+        navigateFallbackDenylist: [/^\/api/],
+        runtimeCaching: [],
       },
     }),
   ],

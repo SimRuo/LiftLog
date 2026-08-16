@@ -1,103 +1,94 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  Typography, Box, Button, TextField, Card, CardContent,
-  IconButton, Stack, Alert, CircularProgress, Autocomplete,
-  Dialog, DialogTitle, DialogContent, DialogActions, MenuItem
+  Box,
+  Button,
+  TextField,
+  Card,
+  IconButton,
+  Stack,
+  Typography,
+  Autocomplete,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Skeleton,
 } from '@mui/material';
 import {
-  AddRounded, DeleteRounded, SaveRounded, DragIndicatorRounded,
-  ArrowUpwardRounded, ArrowDownwardRounded
+  AddRounded,
+  DeleteOutlineRounded,
+  ArrowUpwardRounded,
+  ArrowDownwardRounded,
 } from '@mui/icons-material';
 import AutoAwesomeRounded from '@mui/icons-material/AutoAwesomeRounded';
 import { plansApi } from '../api/plans';
 import { exercisesApi } from '../api/exercises';
 import PlanGenerateDialog from '../components/ai/PlanGenerateDialog';
-
-const CREATE_PREFIX = 'create:';
+import NumberField from '../components/ui/NumberField';
+import { Label } from '../components/ui/Bits';
+import { useToast } from '../components/ui/toast-context';
+import { ink } from '../theme';
 
 export default function PlanEditPage() {
   const navigate = useNavigate();
+  const toast = useToast();
   const [planName, setPlanName] = useState('');
   const [days, setDays] = useState([]);
   const [allExercises, setAllExercises] = useState([]);
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
   const [isEdit, setIsEdit] = useState(false);
   const [aiDialogOpen, setAiDialogOpen] = useState(false);
 
-  // Create exercise dialog state
   const [createDialog, setCreateDialog] = useState({ open: false, name: '', dayIdx: -1 });
   const [newCategory, setNewCategory] = useState('');
 
   useEffect(() => {
-    Promise.all([
-      exercisesApi.list().catch(() => []),
-      plansApi.get().catch(() => null),
-    ]).then(([categories, plan]) => {
-      const exercises = categories.flatMap(c =>
-        c.exercises.map(ex => ({ ...ex, category: c.category }))
-      );
-      setAllExercises(exercises);
-
-      if (plan) {
-        setIsEdit(true);
-        setPlanName(plan.name);
-        setDays(plan.days.map(d => ({
-          name: d.name,
-          exercises: d.exercises.map(e => ({
-            exerciseId: e.exerciseId,
-            exerciseName: e.exerciseName,
-            exerciseCategory: e.exerciseCategory,
-            sets: e.sets,
-            reps: e.reps,
-            weight: e.weight,
-            notes: e.notes || '',
-          })),
-        })));
-      }
-    }).finally(() => setLoading(false));
+    Promise.all([exercisesApi.list().catch(() => []), plansApi.get().catch(() => null)])
+      .then(([categories, plan]) => {
+        setAllExercises(
+          categories.flatMap((c) => c.exercises.map((ex) => ({ ...ex, category: c.category }))),
+        );
+        if (plan) {
+          setIsEdit(true);
+          setPlanName(plan.name);
+          setDays(
+            plan.days.map((d) => ({
+              name: d.name,
+              exercises: d.exercises.map((e) => ({
+                exerciseId: e.exerciseId,
+                exerciseName: e.exerciseName,
+                exerciseCategory: e.exerciseCategory,
+                sets: e.sets,
+                reps: e.reps,
+                weight: e.weight,
+                notes: e.notes || '',
+              })),
+            })),
+          );
+        }
+      })
+      .finally(() => setLoading(false));
   }, []);
 
-  const existingCategories = [...new Set(allExercises.map(e => e.category))].sort();
+  const categories = [...new Set(allExercises.map((e) => e.category))].sort();
 
-  const addDay = () => {
-    setDays(prev => [...prev, { name: '', exercises: [] }]);
-  };
+  const patchDay = (dayIdx, fn) => setDays((prev) => prev.map((d, i) => (i === dayIdx ? fn(d) : d)));
 
-  const removeDay = (dayIdx) => {
-    setDays(prev => prev.filter((_, i) => i !== dayIdx));
-  };
-
-  const moveDayUp = (dayIdx) => {
-    if (dayIdx === 0) return;
-    setDays(prev => {
-      const arr = [...prev];
-      [arr[dayIdx - 1], arr[dayIdx]] = [arr[dayIdx], arr[dayIdx - 1]];
-      return arr;
-    });
-  };
-
-  const moveDayDown = (dayIdx) => {
-    setDays(prev => {
-      if (dayIdx >= prev.length - 1) return prev;
-      const arr = [...prev];
-      [arr[dayIdx], arr[dayIdx + 1]] = [arr[dayIdx + 1], arr[dayIdx]];
-      return arr;
-    });
-  };
-
-  const updateDayName = (dayIdx, name) => {
-    setDays(prev => prev.map((d, i) => i === dayIdx ? { ...d, name } : d));
+  const move = (list, from, to) => {
+    if (to < 0 || to >= list.length) return list;
+    const arr = [...list];
+    [arr[from], arr[to]] = [arr[to], arr[from]];
+    return arr;
   };
 
   const addExerciseToDay = (dayIdx, exercise) => {
-    setDays(prev => prev.map((d, i) => {
-      if (i !== dayIdx) return d;
-      return {
-        ...d,
-        exercises: [...d.exercises, {
+    patchDay(dayIdx, (d) => ({
+      ...d,
+      exercises: [
+        ...d.exercises,
+        {
           exerciseId: exercise.id,
           exerciseName: exercise.name,
           exerciseCategory: exercise.category,
@@ -105,78 +96,49 @@ export default function PlanEditPage() {
           reps: '8',
           weight: 0,
           notes: '',
-        }],
-      };
+        },
+      ],
     }));
   };
 
-  const handleAutocompleteChange = (dayIdx, value) => {
+  const handlePick = (dayIdx, value) => {
     if (!value) return;
-
-    // If user picked "Create X" option
-    if (typeof value === 'string' || (value && value.isCreate)) {
-      const name = value.isCreate ? value.name : value;
-      setCreateDialog({ open: true, name, dayIdx });
+    if (typeof value === 'string' || value.isCreate) {
+      setCreateDialog({ open: true, name: value.isCreate ? value.name : value, dayIdx });
       setNewCategory('');
       return;
     }
-
     addExerciseToDay(dayIdx, value);
   };
 
   const handleCreateExercise = async () => {
-    if (!newCategory.trim()) return;
+    const category = newCategory.trim();
+    if (!category) return;
     try {
-      const created = await exercisesApi.create(createDialog.name.trim(), newCategory.trim());
-      const newEx = { id: created.id, name: created.name, category: created.category, isDefault: false };
-      setAllExercises(prev => [...prev, newEx]);
+      const created = await exercisesApi.create(createDialog.name.trim(), category);
+      const newEx = { id: created.id, name: created.name, category: created.category };
+      setAllExercises((prev) => [...prev, newEx]);
       addExerciseToDay(createDialog.dayIdx, newEx);
       setCreateDialog({ open: false, name: '', dayIdx: -1 });
     } catch (err) {
-      setError(err.message || 'Failed to create exercise');
+      toast.error(err.message || 'Could not create that exercise.');
     }
   };
 
-  const removeExercise = (dayIdx, exIdx) => {
-    setDays(prev => prev.map((d, i) => {
-      if (i !== dayIdx) return d;
-      return { ...d, exercises: d.exercises.filter((_, j) => j !== exIdx) };
+  const updateExercise = (dayIdx, exIdx, field, value) =>
+    patchDay(dayIdx, (d) => ({
+      ...d,
+      exercises: d.exercises.map((e, j) => (j === exIdx ? { ...e, [field]: value } : e)),
     }));
-  };
-
-  const updateExercise = (dayIdx, exIdx, field, value) => {
-    setDays(prev => prev.map((d, i) => {
-      if (i !== dayIdx) return d;
-      return {
-        ...d,
-        exercises: d.exercises.map((e, j) =>
-          j === exIdx ? { ...e, [field]: value } : e
-        ),
-      };
-    }));
-  };
 
   const handleSave = async () => {
-    if (!planName.trim()) {
-      setError('Plan name is required');
-      return;
-    }
-    if (days.length === 0) {
-      setError('Add at least one day');
-      return;
-    }
+    if (!planName.trim()) return toast.error('Give the plan a name.');
+    if (days.length === 0) return toast.error('Add at least one day.');
     for (const day of days) {
-      if (!day.name.trim()) {
-        setError('All days must have a name');
-        return;
-      }
-      if (day.exercises.length === 0) {
-        setError(`Day "${day.name}" needs at least one exercise`);
-        return;
-      }
+      if (!day.name.trim()) return toast.error('Every day needs a name.');
+      if (day.exercises.length === 0) return toast.error(`"${day.name}" has no exercises.`);
     }
 
-    setError('');
     setSaving(true);
     try {
       const payload = {
@@ -187,22 +149,19 @@ export default function PlanEditPage() {
           exercises: d.exercises.map((e, j) => ({
             exerciseId: e.exerciseId,
             order: j,
-            sets: parseInt(e.sets) || 1,
-            reps: e.reps || '1',
+            sets: parseInt(e.sets, 10) || 1,
+            reps: String(e.reps || '1'),
             weight: parseFloat(e.weight) || 0,
-            notes: e.notes || null,
+            notes: e.notes?.trim() || null,
           })),
         })),
       };
-
-      if (isEdit) {
-        await plansApi.update(payload);
-      } else {
-        await plansApi.create(payload);
-      }
+      if (isEdit) await plansApi.update(payload);
+      else await plansApi.create(payload);
+      toast.success(isEdit ? 'Plan updated.' : 'Plan created.');
       navigate('/plan');
     } catch (err) {
-      setError(err.message || 'Failed to save plan');
+      toast.error(err.message || 'Could not save the plan.');
     } finally {
       setSaving(false);
     }
@@ -210,132 +169,221 @@ export default function PlanEditPage() {
 
   const handleAiGenerate = (plan) => {
     setPlanName(plan.name);
-    setDays(plan.days.map(d => ({
-      name: d.name,
-      exercises: (d.exercises || []).map(e => {
-        const match = allExercises.find(ex => ex.id === e.exerciseId);
-        return {
-          exerciseId: e.exerciseId,
-          exerciseName: match?.name ?? `Exercise #${e.exerciseId}`,
-          exerciseCategory: match?.category ?? '',
-          sets: e.sets,
-          reps: e.reps,
-          weight: e.weight,
-          notes: e.notes || '',
-        };
-      }),
-    })));
+    setDays(
+      plan.days.map((d) => ({
+        name: d.name,
+        exercises: (d.exercises || []).map((e) => {
+          const match = allExercises.find((ex) => ex.id === e.exerciseId);
+          return {
+            exerciseId: e.exerciseId,
+            exerciseName: match?.name ?? `Exercise #${e.exerciseId}`,
+            exerciseCategory: match?.category ?? '',
+            sets: e.sets,
+            reps: e.reps,
+            weight: e.weight,
+            notes: e.notes || '',
+          };
+        }),
+      })),
+    );
+    toast.info('Generated — review it before saving.');
   };
 
   const filterOptions = (options, { inputValue }) => {
     const input = inputValue.toLowerCase().trim();
-    const filtered = options.filter(o =>
-      o.name.toLowerCase().includes(input)
-    );
-    if (input && !options.some(o => o.name.toLowerCase() === input)) {
+    const filtered = options.filter((o) => o.name.toLowerCase().includes(input));
+    if (input && !options.some((o) => o.name.toLowerCase() === input)) {
       filtered.push({ isCreate: true, name: inputValue.trim(), category: 'New' });
     }
     return filtered;
   };
 
-  if (loading) return <Box sx={{ display: 'flex', justifyContent: 'center', mt: 4 }}><CircularProgress /></Box>;
+  if (loading) {
+    return (
+      <Box>
+        <Skeleton variant="rectangular" height={56} sx={{ mb: 2 }} />
+        <Skeleton variant="rectangular" height={200} sx={{ mb: 2 }} />
+        <Skeleton variant="rectangular" height={200} />
+      </Box>
+    );
+  }
 
   return (
-    <Box>
-      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
-        <Typography variant="h5" fontWeight={700}>
-          {isEdit ? 'Edit Plan' : 'Create Plan'}
-        </Typography>
+    <Box sx={{ pb: 6 }}>
+      <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 2 }}>
+        <Typography variant="h5">{isEdit ? 'Edit plan' : 'New plan'}</Typography>
         <Button
           variant="outlined"
           size="small"
           startIcon={<AutoAwesomeRounded />}
           onClick={() => setAiDialogOpen(true)}
         >
-          Generate with AI
+          Generate
         </Button>
-      </Box>
+      </Stack>
 
-      {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
-
-      <TextField fullWidth label="Plan Name" value={planName}
-        onChange={e => setPlanName(e.target.value)}
-        placeholder="e.g. Upper Lower Split"
-        sx={{ mb: 3 }} />
+      <TextField
+        fullWidth
+        label="Plan name"
+        value={planName}
+        onChange={(e) => setPlanName(e.target.value)}
+        placeholder="e.g. PSMF cut — 6 day"
+        sx={{ mb: 3 }}
+      />
 
       {days.map((day, dayIdx) => (
         <Card key={dayIdx} sx={{ mb: 2 }}>
-          <CardContent>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
-              <DragIndicatorRounded color="disabled" />
-              <TextField size="small" label={`Day ${dayIdx + 1} Name`} value={day.name}
-                onChange={e => updateDayName(dayIdx, e.target.value)}
-                placeholder="e.g. Upper A" sx={{ flex: 1 }} />
-              <IconButton size="small" onClick={() => moveDayUp(dayIdx)} disabled={dayIdx === 0}>
-                <ArrowUpwardRounded fontSize="small" />
-              </IconButton>
-              <IconButton size="small" onClick={() => moveDayDown(dayIdx)} disabled={dayIdx === days.length - 1}>
-                <ArrowDownwardRounded fontSize="small" />
-              </IconButton>
-              <IconButton size="small" color="error" onClick={() => removeDay(dayIdx)}>
-                <DeleteRounded fontSize="small" />
-              </IconButton>
-            </Box>
+          <Stack
+            direction="row"
+            alignItems="center"
+            spacing={0.5}
+            sx={{ p: 1.25, borderBottom: `1px solid ${ink.line}` }}
+          >
+            <TextField
+              size="small"
+              value={day.name}
+              onChange={(e) => patchDay(dayIdx, (d) => ({ ...d, name: e.target.value }))}
+              placeholder={`Day ${dayIdx + 1} name`}
+              sx={{ flex: 1 }}
+            />
+            <IconButton
+              size="small"
+              disabled={dayIdx === 0}
+              onClick={() => setDays((prev) => move(prev, dayIdx, dayIdx - 1))}
+              aria-label="Move day up"
+            >
+              <ArrowUpwardRounded fontSize="small" />
+            </IconButton>
+            <IconButton
+              size="small"
+              disabled={dayIdx === days.length - 1}
+              onClick={() => setDays((prev) => move(prev, dayIdx, dayIdx + 1))}
+              aria-label="Move day down"
+            >
+              <ArrowDownwardRounded fontSize="small" />
+            </IconButton>
+            <IconButton
+              size="small"
+              onClick={() => setDays((prev) => prev.filter((_, i) => i !== dayIdx))}
+              aria-label="Remove day"
+            >
+              <DeleteOutlineRounded fontSize="small" />
+            </IconButton>
+          </Stack>
 
-            {day.exercises.map((ex, exIdx) => (
-              <Box key={exIdx} sx={{ mb: 1.5, pl: 1, borderLeft: 2, borderColor: 'primary.main' }}>
-                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 0.5 }}>
-                  <Typography variant="body2" fontWeight={600}>{ex.exerciseName}</Typography>
-                  <IconButton size="small" onClick={() => removeExercise(dayIdx, exIdx)}>
-                    <DeleteRounded fontSize="small" />
-                  </IconButton>
+          {day.exercises.map((ex, exIdx) => (
+            <Box key={exIdx} sx={{ p: 1.25, borderBottom: `1px solid ${ink.line}` }}>
+              <Stack direction="row" alignItems="center" spacing={0.5} sx={{ mb: 1 }}>
+                <Box sx={{ flex: 1, minWidth: 0 }}>
+                  <Typography sx={{ fontWeight: 700, fontSize: '0.9rem' }} noWrap>
+                    {ex.exerciseName}
+                  </Typography>
+                  <Label>{ex.exerciseCategory}</Label>
                 </Box>
-                <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap', gap: 1 }}>
-                  <TextField size="small" label="Sets" type="number" sx={{ width: 70 }}
-                    value={ex.sets}
-                    onChange={e => updateExercise(dayIdx, exIdx, 'sets', e.target.value)}
-                    inputProps={{ min: 1 }} />
-                  <TextField size="small" label="Reps" sx={{ width: 80 }}
-                    value={ex.reps}
-                    onChange={e => updateExercise(dayIdx, exIdx, 'reps', e.target.value)}
-                    placeholder="8" />
-                  <TextField size="small" label="Weight (kg)" type="number" sx={{ width: 110 }}
-                    value={ex.weight}
-                    onChange={e => updateExercise(dayIdx, exIdx, 'weight', e.target.value)}
-                    inputProps={{ min: 0, step: 0.5 }} />
-                  <TextField size="small" label="Notes" sx={{ flex: 1, minWidth: 80 }}
-                    value={ex.notes}
-                    onChange={e => updateExercise(dayIdx, exIdx, 'notes', e.target.value)} />
-                </Stack>
-              </Box>
-            ))}
+                <IconButton
+                  size="small"
+                  disabled={exIdx === 0}
+                  onClick={() =>
+                    patchDay(dayIdx, (d) => ({ ...d, exercises: move(d.exercises, exIdx, exIdx - 1) }))
+                  }
+                  aria-label="Move exercise up"
+                >
+                  <ArrowUpwardRounded sx={{ fontSize: 16 }} />
+                </IconButton>
+                <IconButton
+                  size="small"
+                  disabled={exIdx === day.exercises.length - 1}
+                  onClick={() =>
+                    patchDay(dayIdx, (d) => ({ ...d, exercises: move(d.exercises, exIdx, exIdx + 1) }))
+                  }
+                  aria-label="Move exercise down"
+                >
+                  <ArrowDownwardRounded sx={{ fontSize: 16 }} />
+                </IconButton>
+                <IconButton
+                  size="small"
+                  onClick={() =>
+                    patchDay(dayIdx, (d) => ({
+                      ...d,
+                      exercises: d.exercises.filter((_, j) => j !== exIdx),
+                    }))
+                  }
+                  aria-label="Remove exercise"
+                >
+                  <DeleteOutlineRounded sx={{ fontSize: 16 }} />
+                </IconButton>
+              </Stack>
 
+              <Stack direction="row" spacing={0.75} alignItems="flex-end">
+                <NumberField
+                  label="sets"
+                  value={ex.sets}
+                  onChange={(v) => updateExercise(dayIdx, exIdx, 'sets', v)}
+                  min={1}
+                  max={20}
+                  width={96}
+                />
+                {/* Reps stays free text: a plan legitimately says "5-8",
+                    "AMRAP" or "8 each side", none of which is a number. */}
+                <TextField
+                  size="small"
+                  label="Reps"
+                  value={ex.reps}
+                  onChange={(e) => updateExercise(dayIdx, exIdx, 'reps', e.target.value)}
+                  placeholder="8"
+                  sx={{ width: 84 }}
+                  InputLabelProps={{ shrink: true }}
+                />
+                <NumberField
+                  label="kg"
+                  value={ex.weight}
+                  onChange={(v) => updateExercise(dayIdx, exIdx, 'weight', v)}
+                  step={2.5}
+                  max={999}
+                />
+              </Stack>
+
+              <TextField
+                fullWidth
+                size="small"
+                placeholder="Note — cue, tempo, stopping rule"
+                value={ex.notes}
+                onChange={(e) => updateExercise(dayIdx, exIdx, 'notes', e.target.value)}
+                sx={{ mt: 1 }}
+              />
+            </Box>
+          ))}
+
+          <Box sx={{ p: 1.25 }}>
             <Autocomplete
               options={allExercises}
-              getOptionLabel={opt => opt.isCreate ? `Create "${opt.name}"` : opt.name}
-              groupBy={opt => opt.category}
+              getOptionLabel={(o) => (o.isCreate ? `Create "${o.name}"` : o.name)}
+              groupBy={(o) => o.category}
               filterOptions={filterOptions}
-              onChange={(_, val) => handleAutocompleteChange(dayIdx, val)}
+              onChange={(_, val) => handlePick(dayIdx, val)}
               value={null}
               blurOnSelect
               clearOnBlur
               renderInput={(params) => (
-                <TextField {...params} size="small" label="Add exercise (type to search or create)..." />
+                <TextField {...params} size="small" placeholder="Add exercise — search or type a new name" />
               )}
-              sx={{ mt: 1 }}
             />
-          </CardContent>
+          </Box>
         </Card>
       ))}
 
-      <Button fullWidth variant="outlined" startIcon={<AddRounded />}
-        onClick={addDay} sx={{ mb: 2 }}>
-        Add Day
+      <Button
+        fullWidth
+        variant="outlined"
+        startIcon={<AddRounded />}
+        onClick={() => setDays((prev) => [...prev, { name: '', exercises: [] }])}
+        sx={{ mb: 2 }}
+      >
+        Add day
       </Button>
 
-      <Button fullWidth variant="contained" startIcon={<SaveRounded />}
-        onClick={handleSave} disabled={saving} size="large" sx={{ mb: 8 }}>
-        {saving ? 'Saving...' : 'Save Plan'}
+      <Button fullWidth size="large" variant="contained" onClick={handleSave} disabled={saving}>
+        {saving ? 'Saving…' : isEdit ? 'Save changes' : 'Create plan'}
       </Button>
 
       <PlanGenerateDialog
@@ -344,21 +392,27 @@ export default function PlanEditPage() {
         onGenerate={handleAiGenerate}
       />
 
-      <Dialog open={createDialog.open} onClose={() => setCreateDialog({ open: false, name: '', dayIdx: -1 })}>
-        <DialogTitle>Create Exercise: {createDialog.name}</DialogTitle>
+      <Dialog
+        open={createDialog.open}
+        onClose={() => setCreateDialog({ open: false, name: '', dayIdx: -1 })}
+        fullWidth
+        maxWidth="xs"
+      >
+        <DialogTitle>New exercise: {createDialog.name}</DialogTitle>
         <DialogContent>
-          <TextField
-            select fullWidth label="Category" value={newCategory}
-            onChange={e => setNewCategory(e.target.value)}
-            sx={{ mt: 1 }}
-          >
-            {existingCategories.map(cat => (
-              <MenuItem key={cat} value={cat}>{cat}</MenuItem>
-            ))}
-          </TextField>
-          <TextField fullWidth label="Or type a new category" value={newCategory}
-            onChange={e => setNewCategory(e.target.value)}
-            sx={{ mt: 2 }} size="small" />
+          {/* One freeSolo field rather than the old pair of a Select and a
+              text box bound to the same state — two controls that fought each
+              other and made it unclear which one counted. */}
+          <Autocomplete
+            freeSolo
+            options={categories}
+            value={newCategory}
+            onChange={(_, v) => setNewCategory(v || '')}
+            onInputChange={(_, v) => setNewCategory(v)}
+            renderInput={(params) => (
+              <TextField {...params} label="Category" placeholder="Chest, Back, Legs…" sx={{ mt: 1 }} autoFocus />
+            )}
+          />
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setCreateDialog({ open: false, name: '', dayIdx: -1 })}>Cancel</Button>

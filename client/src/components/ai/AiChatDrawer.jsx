@@ -9,14 +9,30 @@ import AutoAwesomeRounded from '@mui/icons-material/AutoAwesomeRounded';
 import DeleteOutlineRounded from '@mui/icons-material/DeleteOutlineRounded';
 import { aiApi } from '../../api/ai';
 
+const HISTORY_KEY = 'liftlog.coach';
+
 export default function AiChatDrawer({ open, onClose }) {
-  const [messages, setMessages] = useState([]);
+  // The drawer unmounts when you change tab, so without this a conversation
+  // disappears the moment you flick to Progress to check the number you were
+  // asking about.
+  const [messages, setMessages] = useState(() => {
+    try {
+      return JSON.parse(sessionStorage.getItem(HISTORY_KEY)) || [];
+    } catch {
+      return [];
+    }
+  });
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const bottomRef = useRef(null);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+    try {
+      sessionStorage.setItem(HISTORY_KEY, JSON.stringify(messages));
+    } catch {
+      /* private mode or quota — the chat still works in memory */
+    }
   }, [messages, loading]);
 
   const send = async () => {
@@ -53,13 +69,13 @@ export default function AiChatDrawer({ open, onClose }) {
       onClose={onClose}
       onOpen={() => {}}
       disableSwipeToOpen
-      PaperProps={{ sx: { borderRadius: '16px 16px 0 0', height: '70vh', display: 'flex', flexDirection: 'column' } }}
+      PaperProps={{ sx: { borderRadius: 0, height: '75dvh', display: 'flex', flexDirection: 'column', borderTop: 1, borderColor: 'divider' } }}
     >
       {/* Header */}
       <Box sx={{ px: 2, py: 1.5, display: 'flex', alignItems: 'center', gap: 1 }}>
         <AutoAwesomeRounded color="primary" fontSize="small" />
-        <Typography variant="subtitle1" fontWeight={700} sx={{ flex: 1 }}>
-          AI Coach
+        <Typography variant="subtitle1" sx={{ flex: 1, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '-0.01em' }}>
+          Coach
         </Typography>
         {messages.length > 0 && (
           <IconButton size="small" onClick={() => setMessages([])} title="Clear chat">
@@ -95,8 +111,10 @@ export default function AiChatDrawer({ open, onClose }) {
               sx={{
                 px: 1.5,
                 py: 1,
-                borderRadius: msg.role === 'user' ? '16px 16px 4px 16px' : '16px 16px 16px 4px',
-                bgcolor: msg.role === 'user' ? 'primary.main' : 'action.hover',
+                borderRadius: 0,
+                bgcolor: msg.role === 'user' ? 'primary.main' : 'background.default',
+                border: msg.role === 'user' ? 'none' : 1,
+                borderColor: 'divider',
                 color: msg.role === 'user' ? 'primary.contrastText' : 'text.primary',
               }}
             >
@@ -108,7 +126,7 @@ export default function AiChatDrawer({ open, onClose }) {
         ))}
         {loading && (
           <Box sx={{ alignSelf: 'flex-start' }}>
-            <Paper elevation={0} sx={{ px: 1.5, py: 1, borderRadius: '16px 16px 16px 4px', bgcolor: 'action.hover' }}>
+            <Paper elevation={0} sx={{ px: 1.5, py: 1, borderRadius: 0, border: 1, borderColor: 'divider' }}>
               <CircularProgress size={16} />
             </Paper>
           </Box>

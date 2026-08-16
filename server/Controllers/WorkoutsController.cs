@@ -117,16 +117,26 @@ public class WorkoutsController : ControllerBase
             new { UserId });
 
         var items = await _db.QueryAsync<WorkoutSummaryResponse>(
+            // ExerciseNames comes from a correlated subquery rather than
+            // STRING_AGG in the outer GROUP BY: SQL Server has no
+            // STRING_AGG(DISTINCT ...), and aggregating over the join would
+            // repeat a name once per set.
             @"SELECT ws.Id, ws.Date, ws.Notes, ws.CreatedAt, ws.IsRestDay,
                      pd.Name AS PlanDayName,
                      COUNT(DISTINCT wset.ExerciseId) AS ExerciseCount,
-                     COUNT(wset.Id) AS SetCount
+                     COUNT(wset.Id) AS SetCount,
+                     ISNULL(SUM(wset.Weight * wset.Reps), 0) AS Volume,
+                     (SELECT STRING_AGG(x.Name, ', ') WITHIN GROUP (ORDER BY x.Name)
+                        FROM (SELECT DISTINCT e.Name
+                                FROM WorkoutSets s2
+                                INNER JOIN Exercises e ON e.Id = s2.ExerciseId
+                               WHERE s2.WorkoutSessionId = ws.Id) x) AS ExerciseNames
               FROM WorkoutSessions ws
               LEFT JOIN PlanDays pd ON pd.Id = ws.PlanDayId
               LEFT JOIN WorkoutSets wset ON wset.WorkoutSessionId = ws.Id
               WHERE ws.UserId = @UserId
               GROUP BY ws.Id, ws.Date, ws.Notes, ws.CreatedAt, ws.IsRestDay, pd.Name
-              ORDER BY ws.Date DESC
+              ORDER BY ws.Date DESC, ws.CreatedAt DESC
               OFFSET @Offset ROWS FETCH NEXT @PageSize ROWS ONLY",
             new { UserId, Offset = offset, PageSize = pageSize });
 

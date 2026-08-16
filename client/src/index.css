@@ -1,0 +1,77 @@
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
+body {
+  background-color: #08080a;
+  color: #f4f4f0;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  /* An accidental two-finger zoom while logging a set is pure annoyance, and
+     iOS treats a double-tap on a button as zoom unless told otherwise. */
+  touch-action: manipulation;
+  overscroll-behavior-y: none;
+}
+
+a {
+  color: inherit;
+}
+
+/* HUD register: every label, index and annotation is mono, uppercase and
+   tracked out. The display face states, the mono face annotates. */
+.mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, 'Cascadia Mono', monospace;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  font-size: 0.68rem;
+  font-weight: 600;
+}
+
+/* Faint diagonal hatch, used behind the rest-timer bar so it reads as a
+   distinct layer over the page rather than another card. */
+.hatch-bg {
+  background-image: repeating-linear-gradient(
+    45deg,
+    transparent 0 7px,
+    rgba(244, 244, 240, 0.05) 7px 8px
+  );
+}
+
+/* A completed set flashes once. Deliberately short — it confirms the tap
+   landed without becoming something you watch. */
+@keyframes setLanded {
+  0% {
+    background-color: rgba(255, 77, 23, 0.22);
+  }
+  100% {
+    background-color: rgba(255, 77, 23, 0.05);
+  }
+}
+
+.set-landed {
+  animation: setLanded 480ms ease-out;
+}
+
+/* The rest timer's final ten seconds. */
+@keyframes restPulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.45;
+  }
+}
+
+.rest-urgent {
+  animation: restPulse 1s steps(2, end) infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .set-landed,
+  .rest-urgent {
+    animation: none;
+  }
+}
