@@ -59,6 +59,12 @@ if (string.Equals(builder.Configuration["Ai:Provider"], "groq", StringComparison
 else
     builder.Services.AddHttpClient<server.Services.IPlanGenerator, server.Services.OllamaPlanGenerator>();
 
+// Generation runs off the request thread. The store is a singleton because it
+// outlives the request that queued the work; the worker drains it one job at a
+// time so two generations can't contend for the same four cores.
+builder.Services.AddSingleton<server.Services.PlanJobStore>();
+builder.Services.AddHostedService<server.Services.PlanGenerationWorker>();
+
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(c =>

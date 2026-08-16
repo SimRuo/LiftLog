@@ -1,6 +1,4 @@
-using System.Data;
 using System.Security.Claims;
-using Dapper;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using server.DTOs;
@@ -8,101 +6,58 @@ using server.Services;
 
 namespace server.Controllers;
 
+/// <summary>
+/// Plan generation is asynchronous because it takes a minute or two on a CPU,
+/// and a request held open that long is at the mercy of every proxy between the
+/// phone and the process. Raising each of their timeouts in turn only works
+/// until you meet one you don't control — Cloudflare caps origin responses at
+/// 100s regardless of configuration. Here every request finishes in
+/// milliseconds and no timeout anywhere is relevant.
+/// </summary>
 [ApiController]
 [Route("api/[controller]")]
 [Authorize]
 public class AiController : ControllerBase
 {
-    private readonly IDbConnection _db;
-    private readonly IPlanGenerator _generator;
-    private readonly ILogger<AiController> _log;
-
-    public AiController(IDbConnection db, IPlanGenerator generator, ILogger<AiController> log)
-        => (_db, _generator, _log) = (db, generator, log);
+    private readonly PlanJobStore _jobs;
+    public AiController(PlanJobStore jobs) => _jobs = jobs;
 
     private string UserId => User.FindFirstValue(ClaimTypes.NameIdentifier)!;
 
+    /// <summary>Queue a generation. Returns immediately with a job to poll.</summary>
     [HttpPost("generate-plan")]
-    public async Task<ActionResult<CreatePlanRequest>> GeneratePlan(GeneratePlanRequest request)
+    public ActionResult<PlanJobResponse> StartGeneratePlan(GeneratePlanRequest request)
     {
         if (string.IsNullOrWhiteSpace(request.Description))
             return BadRequest("Describe the plan you want.");
 
-        var exercises = (await _db.QueryAsync<ExerciseInfo>(
-            @"SELECT Id, Name, Category FROM Exercises
-              WHERE IsDefault = 1 OR CreatedByUserId = @UserId
-              ORDER BY Category, Name",
-            new { UserId })).ToList();
-
-        if (exercises.Count == 0)
-            return BadRequest("There are no exercises to build a plan from.");
-
-        try
-        {
-            var plan = await _generator.GeneratePlan(request.Description, exercises);
-            if (plan is null)
-                return StatusCode(502, "The model returned nothing usable. Try rephrasing the request.");
-
-            return Ok(Normalise(plan, exercises));
-        }
-        catch (TaskCanceledException)
-        {
-            // Almost always the HttpClient timeout rather than a caller
-            // disconnect: CPU generation that overruns ten minutes is wedged.
-            _log.LogError("Plan generation timed out");
-            return StatusCode(504, "The model took too long to respond. It may still be loading — try again shortly.");
-        }
-        catch (HttpRequestException ex)
-        {
-            _log.LogError(ex, "Plan generation transport failure");
-            return StatusCode(502, ex.Message);
-        }
+        var job = _jobs.Enqueue(UserId, request.Description.Trim());
+        return Accepted(Describe(job));
     }
 
     /// <summary>
-    /// The model is asked for as little as possible, so the deterministic parts
-    /// are filled in here: ordering comes from array position, and weight is
-    /// always 0 because the lifter supplies their own.
-    ///
-    /// The ID filter and the set clamp are redundant under the Ollama path,
-    /// where the grammar already guarantees valid IDs — they're kept because
-    /// the Groq path has no such guarantee, and because a validation error from
-    /// PlansController later is a far worse way to find out.
+    /// Poll a generation. 404 covers both "never existed" and "expired or lost
+    /// to a restart" — the client's response to either is the same: ask again.
     /// </summary>
-    private static CreatePlanRequest Normalise(CreatePlanRequest plan, List<ExerciseInfo> exercises)
+    [HttpGet("generate-plan/{id}")]
+    public ActionResult<PlanJobResponse> GetGeneratePlan(Guid id)
     {
-        var validIds = exercises.Select(e => e.Id).ToHashSet();
+        var job = _jobs.GetForUser(id, UserId);
+        return job is null ? NotFound() : Ok(Describe(job));
+    }
 
-        plan.Name = Truncate(plan.Name, 100, "Generated plan");
-        plan.Days = plan.Days.Where(d => d.Exercises.Count > 0).ToList();
-
-        for (var i = 0; i < plan.Days.Count; i++)
+    private static PlanJobResponse Describe(PlanJob job) => new()
+    {
+        Id = job.Id.ToString(),
+        Status = job.Status switch
         {
-            var day = plan.Days[i];
-            day.Order = i;
-            day.Name = Truncate(day.Name, 100, $"Day {i + 1}");
-            day.Exercises = day.Exercises.Where(e => validIds.Contains(e.ExerciseId)).ToList();
-
-            for (var j = 0; j < day.Exercises.Count; j++)
-            {
-                var ex = day.Exercises[j];
-                ex.Order = j;
-                ex.Sets = Math.Clamp(ex.Sets, 1, 20);
-                ex.Reps = Truncate(ex.Reps, 20, "8");
-                ex.Weight = 0;
-                if (string.IsNullOrWhiteSpace(ex.Notes)) ex.Notes = null;
-            }
-        }
-
-        // Days can empty out if every exercise in them was filtered.
-        plan.Days = plan.Days.Where(d => d.Exercises.Count > 0).ToList();
-        return plan;
-    }
-
-    private static string Truncate(string? value, int max, string fallback)
-    {
-        var trimmed = value?.Trim();
-        if (string.IsNullOrEmpty(trimmed)) return fallback;
-        return trimmed.Length <= max ? trimmed : trimmed[..max];
-    }
+            PlanJobStatus.Queued => "queued",
+            PlanJobStatus.Running => "running",
+            PlanJobStatus.Done => "done",
+            _ => "failed"
+        },
+        ElapsedSeconds = Math.Round(job.ElapsedSeconds, 1),
+        Plan = job.Status == PlanJobStatus.Done ? job.Plan : null,
+        Error = job.Status == PlanJobStatus.Failed ? job.Error : null,
+    };
 }
