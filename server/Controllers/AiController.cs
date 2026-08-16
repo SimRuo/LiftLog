@@ -1,6 +1,5 @@
 using System.Data;
 using System.Security.Claims;
-using System.Text;
 using Dapper;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -15,15 +14,19 @@ namespace server.Controllers;
 public class AiController : ControllerBase
 {
     private readonly IDbConnection _db;
-    private readonly GroqService _groq;
-    public AiController(IDbConnection db, GroqService groq) => (_db, _groq) = (db, groq);
+    private readonly IPlanGenerator _generator;
+    private readonly ILogger<AiController> _log;
+
+    public AiController(IDbConnection db, IPlanGenerator generator, ILogger<AiController> log)
+        => (_db, _generator, _log) = (db, generator, log);
+
     private string UserId => User.FindFirstValue(ClaimTypes.NameIdentifier)!;
 
     [HttpPost("generate-plan")]
     public async Task<ActionResult<CreatePlanRequest>> GeneratePlan(GeneratePlanRequest request)
     {
         if (string.IsNullOrWhiteSpace(request.Description))
-            return BadRequest("Description is required");
+            return BadRequest("Describe the plan you want.");
 
         var exercises = (await _db.QueryAsync<ExerciseInfo>(
             @"SELECT Id, Name, Category FROM Exercises
@@ -31,77 +34,75 @@ public class AiController : ControllerBase
               ORDER BY Category, Name",
             new { UserId })).ToList();
 
-        try
-        {
-            var plan = await _groq.GeneratePlan(request.Description, exercises);
-            if (plan == null)
-                return StatusCode(500, "AI returned an empty response");
-
-            var validIds = exercises.Select(e => e.Id).ToHashSet();
-            foreach (var day in plan.Days)
-                day.Exercises = day.Exercises.Where(e => validIds.Contains(e.ExerciseId)).ToList();
-
-            for (var i = 0; i < plan.Days.Count; i++)
-            {
-                plan.Days[i].Order = i;
-                for (var j = 0; j < plan.Days[i].Exercises.Count; j++)
-                    plan.Days[i].Exercises[j].Order = j;
-            }
-
-            return Ok(plan);
-        }
-        catch (Exception ex)
-        {
-            return StatusCode(500, $"AI request failed: {ex.Message}");
-        }
-    }
-
-    [HttpPost("advice")]
-    public async Task<ActionResult<AdviceResponse>> GetAdvice(AdviceRequest request)
-    {
-        if (string.IsNullOrWhiteSpace(request.Message))
-            return BadRequest("Message is required");
+        if (exercises.Count == 0)
+            return BadRequest("There are no exercises to build a plan from.");
 
         try
         {
-            var planContext = await BuildPlanContext();
-            var reply = await _groq.GetAdvice(request.Message, request.History, planContext);
-            return Ok(new AdviceResponse { Message = reply });
+            var plan = await _generator.GeneratePlan(request.Description, exercises);
+            if (plan is null)
+                return StatusCode(502, "The model returned nothing usable. Try rephrasing the request.");
+
+            return Ok(Normalise(plan, exercises));
         }
-        catch (Exception ex)
+        catch (TaskCanceledException)
         {
-            return StatusCode(500, $"AI request failed: {ex.Message}");
+            // Almost always the HttpClient timeout rather than a caller
+            // disconnect: CPU generation that overruns ten minutes is wedged.
+            _log.LogError("Plan generation timed out");
+            return StatusCode(504, "The model took too long to respond. It may still be loading — try again shortly.");
+        }
+        catch (HttpRequestException ex)
+        {
+            _log.LogError(ex, "Plan generation transport failure");
+            return StatusCode(502, ex.Message);
         }
     }
 
-    private async Task<string?> BuildPlanContext()
+    /// <summary>
+    /// The model is asked for as little as possible, so the deterministic parts
+    /// are filled in here: ordering comes from array position, and weight is
+    /// always 0 because the lifter supplies their own.
+    ///
+    /// The ID filter and the set clamp are redundant under the Ollama path,
+    /// where the grammar already guarantees valid IDs — they're kept because
+    /// the Groq path has no such guarantee, and because a validation error from
+    /// PlansController later is a far worse way to find out.
+    /// </summary>
+    private static CreatePlanRequest Normalise(CreatePlanRequest plan, List<ExerciseInfo> exercises)
     {
-        var rows = await _db.QueryAsync<PlanContextRow>(
-            @"SELECT d.Name AS DayName, e.Name AS ExerciseName, pe.Sets, pe.Reps, pe.Weight
-              FROM WorkoutPlans p
-              INNER JOIN PlanDays d ON d.WorkoutPlanId = p.Id
-              INNER JOIN PlanExercises pe ON pe.PlanDayId = d.Id
-              INNER JOIN Exercises e ON e.Id = pe.ExerciseId
-              WHERE p.UserId = @UserId AND p.IsActive = 1
-              ORDER BY d.[Order], pe.[Order]",
-            new { UserId });
+        var validIds = exercises.Select(e => e.Id).ToHashSet();
 
-        var list = rows.ToList();
-        if (list.Count == 0) return null;
+        plan.Name = Truncate(plan.Name, 100, "Generated plan");
+        plan.Days = plan.Days.Where(d => d.Exercises.Count > 0).ToList();
 
-        var sb = new StringBuilder();
-        string? currentDay = null;
-        foreach (var row in list)
+        for (var i = 0; i < plan.Days.Count; i++)
         {
-            if (row.DayName != currentDay)
+            var day = plan.Days[i];
+            day.Order = i;
+            day.Name = Truncate(day.Name, 100, $"Day {i + 1}");
+            day.Exercises = day.Exercises.Where(e => validIds.Contains(e.ExerciseId)).ToList();
+
+            for (var j = 0; j < day.Exercises.Count; j++)
             {
-                currentDay = row.DayName;
-                sb.AppendLine($"\n{currentDay}:");
+                var ex = day.Exercises[j];
+                ex.Order = j;
+                ex.Sets = Math.Clamp(ex.Sets, 1, 20);
+                ex.Reps = Truncate(ex.Reps, 20, "8");
+                ex.Weight = 0;
+                if (string.IsNullOrWhiteSpace(ex.Notes)) ex.Notes = null;
             }
-            sb.AppendLine($"  - {row.ExerciseName}: {row.Sets}x{row.Reps} @ {row.Weight}kg");
         }
-        return sb.ToString().Trim();
+
+        // Days can empty out if every exercise in them was filtered.
+        plan.Days = plan.Days.Where(d => d.Exercises.Count > 0).ToList();
+        return plan;
+    }
+
+    private static string Truncate(string? value, int max, string fallback)
+    {
+        var trimmed = value?.Trim();
+        if (string.IsNullOrEmpty(trimmed)) return fallback;
+        return trimmed.Length <= max ? trimmed : trimmed[..max];
     }
 }
-
-file record PlanContextRow(string DayName, string ExerciseName, int Sets, string Reps, decimal Weight);

@@ -45,6 +45,13 @@ public class WorkoutSummaryResponse
     public string? Notes { get; set; }
     public int ExerciseCount { get; set; }
     public int SetCount { get; set; }
+    /// <summary>Sum of weight x reps across the session — the headline number
+    /// on a history card, and cheaper to aggregate here than to fetch every
+    /// set client-side just to add them up.</summary>
+    public decimal Volume { get; set; }
+    /// <summary>Comma-separated exercise names, so a card can say what the
+    /// session actually was instead of only how many things were in it.</summary>
+    public string? ExerciseNames { get; set; }
     public DateTime CreatedAt { get; set; }
     public string? PlanDayName { get; set; }
     public bool IsRestDay { get; set; }

@@ -20,9 +20,21 @@ public class ProgressController : ControllerBase
     public async Task<ActionResult<List<ProgressDataPoint>>> GetProgress(
         int exerciseId, [FromQuery] string metric = "maxWeight")
     {
-        var aggregate = metric == "totalVolume"
-            ? "SUM(wset.Weight * wset.Reps)"
-            : "MAX(wset.Weight)";
+        // Whitelisted rather than interpolated freely — this string goes
+        // straight into the SQL text.
+        //
+        // estimated1RM is Epley (w * (1 + reps/30)), capped at 12 reps because
+        // the formula degrades badly past that. It exists because max weight
+        // alone is a poor progress signal on a cut: the top weight often holds
+        // while reps quietly fall, so the chart draws a flat line through a
+        // period you were measurably getting weaker.
+        var aggregate = metric switch
+        {
+            "totalVolume" => "SUM(wset.Weight * wset.Reps)",
+            "estimated1RM" =>
+                "MAX(wset.Weight * (1.0 + (CASE WHEN wset.Reps > 12 THEN 12 ELSE wset.Reps END) / 30.0))",
+            _ => "MAX(wset.Weight)"
+        };
 
         var result = await _db.QueryAsync<ProgressDataPoint>(
             $@"SELECT CAST(ws.Date AS DATE) AS Date, {aggregate} AS Value

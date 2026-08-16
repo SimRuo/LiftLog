@@ -5,21 +5,33 @@ using server.DTOs;
 
 namespace server.Services;
 
-public record ExerciseInfo(int Id, string Name, string Category);
-
-public class GroqService
+/// <summary>
+/// The previous hosted path, kept behind the `Ai:Provider` switch so the local
+/// model can be compared against it without a redeploy. The advice chat this
+/// service also used to serve has been removed — a small local model is a poor
+/// substitute for open-ended coaching, so rather than ship a worse version of
+/// it, it's gone.
+///
+/// Note the difference in approach: with no grammar available, the response
+/// shape has to be described in prose and the exercise IDs merely requested,
+/// which is why this path needs a 70B model to be reliable and still gets
+/// filtered by the caller afterwards.
+/// </summary>
+public class GroqPlanGenerator : IPlanGenerator
 {
-    private const string Model = "llama-3.3-70b-versatile";
     private const string Endpoint = "https://api.groq.com/openai/v1/chat/completions";
 
     private readonly HttpClient _http;
+    private readonly string _model;
     private static readonly JsonSerializerOptions CamelCase = new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
     private static readonly JsonSerializerOptions CaseInsensitive = new() { PropertyNameCaseInsensitive = true };
 
-    public GroqService(HttpClient http, IConfiguration config)
+    public GroqPlanGenerator(HttpClient http, IConfiguration config)
     {
         _http = http;
-        _http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", config["Groq:ApiKey"]!);
+        _http.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", config["Groq:ApiKey"]);
+        _model = config["Groq:Model"] ?? "llama-3.3-70b-versatile";
     }
 
     public async Task<CreatePlanRequest?> GeneratePlan(string description, List<ExerciseInfo> exercises)
@@ -64,7 +76,7 @@ public class GroqService
 
         var body = new
         {
-            model = Model,
+            model = _model,
             response_format = new { type = "json_object" },
             messages = new[]
             {
@@ -73,41 +85,14 @@ public class GroqService
             }
         };
 
-        var text = await ChatAsync(body);
-        if (string.IsNullOrEmpty(text)) return null;
-
-        return JsonSerializer.Deserialize<CreatePlanRequest>(text, CaseInsensitive);
-    }
-
-    public async Task<string> GetAdvice(string message, List<AiChatMessage> history, string? planContext)
-    {
-        var system = "You are a knowledgeable fitness coach assistant inside LiftLog, a workout tracking app. " +
-                     "Help with workout programming, form tips, recovery, nutrition, and general fitness questions. " +
-                     "Keep responses concise and practical.";
-
-        if (!string.IsNullOrEmpty(planContext))
-            system += $"\n\nThe user's current workout plan:\n{planContext}";
-
-        var messages = new List<object> { new { role = "system", content = system } };
-        foreach (var msg in history)
-            messages.Add(new { role = msg.Role == "assistant" ? "assistant" : "user", content = msg.Content });
-        messages.Add(new { role = "user", content = message });
-
-        var body = new
-        {
-            model = Model,
-            messages
-        };
-
-        return await ChatAsync(body) ?? "Sorry, I couldn't generate a response.";
-    }
-
-    private async Task<string?> ChatAsync(object body)
-    {
         var response = await _http.PostAsJsonAsync(Endpoint, body, CamelCase);
         response.EnsureSuccessStatusCode();
         var parsed = await response.Content.ReadFromJsonAsync<GroqResponse>(CaseInsensitive);
-        return parsed?.Choices?[0]?.Message?.Content;
+        var text = parsed?.Choices?[0]?.Message?.Content;
+
+        return string.IsNullOrEmpty(text)
+            ? null
+            : JsonSerializer.Deserialize<CreatePlanRequest>(text, CaseInsensitive);
     }
 }
 

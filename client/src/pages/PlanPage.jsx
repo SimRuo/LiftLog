@@ -1,169 +1,234 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  Typography, Box, CircularProgress, Card, CardContent,
-  Button, Chip, Stack, List, ListItem, ListItemText, Divider,
-  Dialog, DialogTitle, DialogActions
+  Box,
+  Card,
+  Typography,
+  Button,
+  Stack,
+  List,
+  ListItemButton,
+  ListItemText,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogContentText,
+  DialogActions,
+  Menu,
+  MenuItem,
+  IconButton,
+  Chip,
 } from '@mui/material';
-import { EditRounded, DeleteRounded, AddRounded, SwapHorizRounded } from '@mui/icons-material';
+import { MoreVertRounded, AddRounded, EventNoteRounded } from '@mui/icons-material';
 import { plansApi } from '../api/plans';
+import { Label, EmptyState, ListSkeleton } from '../components/ui/Bits';
+import { useToast } from '../components/ui/toast-context';
+import { ink } from '../theme';
+import { kg } from '../lib/format';
 
 export default function PlanPage() {
   const navigate = useNavigate();
+  const toast = useToast();
   const [plan, setPlan] = useState(null);
   const [allPlans, setAllPlans] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [notFound, setNotFound] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [switchOpen, setSwitchOpen] = useState(false);
+  const [menuEl, setMenuEl] = useState(null);
 
-  const load = () => {
-    setLoading(true);
-    Promise.all([
-      plansApi.get().catch(() => null),
-      plansApi.getAll().catch(() => []),
-    ])
-      .then(([activePlan, plans]) => {
-        if (activePlan) {
-          setPlan(activePlan);
-          setNotFound(false);
-        } else {
-          setNotFound(true);
-        }
+  useEffect(() => {
+    Promise.all([plansApi.get().catch(() => null), plansApi.getAll().catch(() => [])])
+      .then(([active, plans]) => {
+        setPlan(active);
         setAllPlans(plans);
       })
       .finally(() => setLoading(false));
-  };
+  }, []);
 
-  useEffect(load, []);
+  const inactive = allPlans.filter((p) => !p.isActive);
 
   const handleDelete = async () => {
-    await plansApi.delete();
-    setPlan(null);
-    setNotFound(true);
-    setDeleteOpen(false);
-    setAllPlans(prev => prev.filter(p => !p.isActive));
+    try {
+      await plansApi.delete();
+      setPlan(null);
+      setAllPlans((prev) => prev.filter((p) => !p.isActive));
+      toast.success('Plan deleted.');
+    } catch (err) {
+      toast.error(err.message || 'Could not delete the plan.');
+    } finally {
+      setDeleteOpen(false);
+    }
   };
 
   const handleActivate = async (id) => {
-    const activated = await plansApi.activate(id);
-    setPlan(activated);
-    setNotFound(false);
-    setSwitchOpen(false);
-    setAllPlans(prev => prev.map(p => ({ ...p, isActive: p.id === id })));
+    try {
+      const activated = await plansApi.activate(id);
+      setPlan(activated);
+      setAllPlans((prev) => prev.map((p) => ({ ...p, isActive: p.id === id })));
+      toast.success(`Switched to ${activated.name}.`);
+    } catch (err) {
+      toast.error(err.message || 'Could not switch plans.');
+    } finally {
+      setSwitchOpen(false);
+    }
   };
 
-  const inactivePlans = allPlans.filter(p => !p.isActive);
+  const switchDialog = (
+    <Dialog open={switchOpen} onClose={() => setSwitchOpen(false)} fullWidth maxWidth="xs">
+      <DialogTitle>Switch plan</DialogTitle>
+      <List sx={{ pt: 0 }}>
+        {inactive.map((p) => (
+          <ListItemButton key={p.id} onClick={() => handleActivate(p.id)}>
+            <ListItemText
+              primary={p.name}
+              secondary={`Created ${new Date(p.createdAt).toLocaleDateString()}`}
+              primaryTypographyProps={{ fontWeight: 700 }}
+            />
+          </ListItemButton>
+        ))}
+      </List>
+      <DialogActions>
+        <Button onClick={() => setSwitchOpen(false)}>Cancel</Button>
+      </DialogActions>
+    </Dialog>
+  );
 
-  if (loading) return <Box sx={{ display: 'flex', justifyContent: 'center', mt: 4 }}><CircularProgress /></Box>;
+  if (loading) return <ListSkeleton count={3} lines={4} />;
 
-  if (notFound || !plan) {
+  if (!plan) {
     return (
-      <Box sx={{ textAlign: 'center', mt: 6 }}>
-        <Typography variant="h5" fontWeight={700} sx={{ mb: 2 }}>No Active Plan</Typography>
-        <Typography color="text.secondary" sx={{ mb: 3 }}>
-          Create a workout plan to get started with structured training.
-        </Typography>
-        <Stack spacing={2} alignItems="center">
-          <Button variant="contained" startIcon={<AddRounded />}
-            onClick={() => navigate('/plan/edit')}>
-            Create Plan
-          </Button>
-          {inactivePlans.length > 0 && (
-            <Button variant="outlined" startIcon={<SwapHorizRounded />}
-              onClick={() => setSwitchOpen(true)}>
-              Switch to Previous Plan
-            </Button>
-          )}
-        </Stack>
-
-        <Dialog open={switchOpen} onClose={() => setSwitchOpen(false)} fullWidth maxWidth="xs">
-          <DialogTitle>Switch to a previous plan</DialogTitle>
-          <List>
-            {inactivePlans.map(p => (
-              <ListItem key={p.id} disableGutters sx={{ px: 3 }}>
-                <ListItemText
-                  primary={p.name}
-                  secondary={new Date(p.createdAt).toLocaleDateString()}
-                />
-                <Button size="small" onClick={() => handleActivate(p.id)}>Activate</Button>
-              </ListItem>
-            ))}
-          </List>
-          <DialogActions>
-            <Button onClick={() => setSwitchOpen(false)}>Cancel</Button>
-          </DialogActions>
-        </Dialog>
-      </Box>
+      <>
+        <EmptyState
+          icon={<EventNoteRounded />}
+          title="No active plan"
+          description="A plan tells LiftLog which day comes next and what you're aiming for."
+          action={
+            <Stack spacing={1} alignItems="center">
+              <Button variant="contained" startIcon={<AddRounded />} onClick={() => navigate('/plan/edit')}>
+                Create a plan
+              </Button>
+              {inactive.length > 0 && (
+                <Button size="small" onClick={() => setSwitchOpen(true)}>
+                  Reactivate a previous plan
+                </Button>
+              )}
+            </Stack>
+          }
+        />
+        {switchDialog}
+      </>
     );
   }
 
+  const totalSets = plan.days.reduce(
+    (n, d) => n + d.exercises.reduce((m, e) => m + e.sets, 0),
+    0,
+  );
+
   return (
     <Box>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-        <Typography variant="h5" fontWeight={700}>{plan.name}</Typography>
-        <Stack direction="row" spacing={1}>
-          {inactivePlans.length > 0 && (
-            <Button size="small" startIcon={<SwapHorizRounded />}
-              onClick={() => setSwitchOpen(true)}>Switch</Button>
-          )}
-          <Button size="small" startIcon={<EditRounded />}
-            onClick={() => navigate('/plan/edit')}>Edit</Button>
-          <Button size="small" color="error" startIcon={<DeleteRounded />}
-            onClick={() => setDeleteOpen(true)}>Delete</Button>
-        </Stack>
-      </Box>
+      <Stack direction="row" alignItems="flex-start" spacing={1} sx={{ mb: 2 }}>
+        <Box sx={{ flex: 1, minWidth: 0 }}>
+          <Label>Active plan</Label>
+          <Typography variant="h5" sx={{ mt: 0.25 }}>
+            {plan.name}
+          </Typography>
+          <Label sx={{ mt: 0.5, color: ink.lineBright }}>
+            {plan.days.length} days · {totalSets} sets per cycle
+          </Label>
+        </Box>
+        <Button variant="contained" size="small" onClick={() => navigate('/plan/edit')}>
+          Edit
+        </Button>
+        <IconButton size="small" onClick={(e) => setMenuEl(e.currentTarget)} aria-label="Plan options">
+          <MoreVertRounded />
+        </IconButton>
+      </Stack>
 
-      {plan.days.map(day => (
-        <Card key={day.id} sx={{ mb: 2 }}>
-          <CardContent>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
-              <Chip label={`Day ${day.order + 1}`} size="small" color="primary" />
-              <Typography variant="subtitle1" fontWeight={600}>{day.name}</Typography>
-            </Box>
-            <List dense disablePadding>
-              {day.exercises.map((ex, idx) => (
-                <Box key={ex.id}>
-                  {idx > 0 && <Divider />}
-                  <ListItem disableGutters>
-                    <ListItemText
-                      primary={ex.exerciseName}
-                      secondary={`${ex.sets} x ${ex.reps}${ex.weight > 0 ? ` @ ${ex.weight} kg` : ''}${ex.notes ? ` — ${ex.notes}` : ''}`}
-                    />
-                    <Chip label={ex.exerciseCategory} size="small" variant="outlined" />
-                  </ListItem>
-                </Box>
-              ))}
-            </List>
-          </CardContent>
+      {plan.days.map((day, i) => (
+        <Card key={day.id} sx={{ mb: 1.5 }}>
+          <Stack
+            direction="row"
+            alignItems="center"
+            spacing={1}
+            sx={{ px: 1.5, py: 1.25, borderBottom: `1px solid ${ink.line}` }}
+          >
+            <Chip size="small" label={`Day ${i + 1}`} color="primary" />
+            <Typography sx={{ fontWeight: 800, letterSpacing: '-0.01em', flex: 1 }}>{day.name}</Typography>
+            <Label>{day.exercises.reduce((n, e) => n + e.sets, 0)} sets</Label>
+          </Stack>
+
+          {day.exercises.map((ex, j) => (
+            <Stack
+              key={ex.id}
+              direction="row"
+              justifyContent="space-between"
+              alignItems="baseline"
+              spacing={1}
+              sx={{ px: 1.5, py: 0.85, borderTop: j ? `1px solid ${ink.line}` : 'none' }}
+            >
+              <Box sx={{ minWidth: 0 }}>
+                <Typography sx={{ fontSize: '0.88rem', fontWeight: 600 }} noWrap>
+                  {ex.exerciseName}
+                </Typography>
+                {ex.notes && (
+                  <Typography sx={{ fontSize: '0.75rem', color: 'text.secondary' }} noWrap>
+                    {ex.notes}
+                  </Typography>
+                )}
+              </Box>
+              <Label sx={{ whiteSpace: 'nowrap' }}>
+                {ex.sets}×{ex.reps}
+                {ex.weight > 0 ? ` · ${kg(ex.weight)}kg` : ''}
+              </Label>
+            </Stack>
+          ))}
         </Card>
       ))}
 
+      <Menu anchorEl={menuEl} open={!!menuEl} onClose={() => setMenuEl(null)}>
+        {inactive.length > 0 && (
+          <MenuItem
+            onClick={() => {
+              setMenuEl(null);
+              setSwitchOpen(true);
+            }}
+          >
+            Switch plan
+          </MenuItem>
+        )}
+        <MenuItem
+          onClick={() => {
+            setMenuEl(null);
+            navigate('/plan/edit');
+          }}
+        >
+          Edit plan
+        </MenuItem>
+        <MenuItem
+          onClick={() => {
+            setMenuEl(null);
+            setDeleteOpen(true);
+          }}
+        >
+          Delete plan
+        </MenuItem>
+      </Menu>
+
       <Dialog open={deleteOpen} onClose={() => setDeleteOpen(false)}>
-        <DialogTitle>Delete this workout plan?</DialogTitle>
+        <DialogTitle>Delete {plan.name}?</DialogTitle>
+        <DialogContent>
+          <DialogContentText sx={{ fontSize: '0.9rem' }}>
+            The plan is removed. Workouts you already logged against it stay in your history.
+          </DialogContentText>
+        </DialogContent>
         <DialogActions>
           <Button onClick={() => setDeleteOpen(false)}>Cancel</Button>
-          <Button color="error" onClick={handleDelete}>Delete</Button>
+          <Button onClick={handleDelete}>Delete</Button>
         </DialogActions>
       </Dialog>
 
-      <Dialog open={switchOpen} onClose={() => setSwitchOpen(false)} fullWidth maxWidth="xs">
-        <DialogTitle>Switch to a previous plan</DialogTitle>
-        <List>
-          {inactivePlans.map(p => (
-            <ListItem key={p.id} disableGutters sx={{ px: 3 }}>
-              <ListItemText
-                primary={p.name}
-                secondary={new Date(p.createdAt).toLocaleDateString()}
-              />
-              <Button size="small" onClick={() => handleActivate(p.id)}>Activate</Button>
-            </ListItem>
-          ))}
-        </List>
-        <DialogActions>
-          <Button onClick={() => setSwitchOpen(false)}>Cancel</Button>
-        </DialogActions>
-      </Dialog>
+      {switchDialog}
     </Box>
   );
 }

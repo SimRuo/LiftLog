@@ -1,115 +1,255 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import {
-  Typography, Box, CircularProgress, FormControl, InputLabel,
-  Select, MenuItem, ToggleButton, ToggleButtonGroup, Card, CardContent
+  Box,
+  Card,
+  Autocomplete,
+  TextField,
+  ToggleButton,
+  ToggleButtonGroup,
+  Typography,
+  Stack,
+  Skeleton,
 } from '@mui/material';
 import { LineChart } from '@mui/x-charts/LineChart';
-import { BarChart } from '@mui/x-charts/BarChart';
+import { ShowChartRounded } from '@mui/icons-material';
 import { exercisesApi } from '../api/exercises';
 import { progressApi } from '../api/progress';
+import { Label, Stat, EmptyState, SectionHeader } from '../components/ui/Bits';
+import { useToast } from '../components/ui/toast-context';
+import { ink } from '../theme';
+import { kg, shortDate } from '../lib/format';
+
+const METRICS = [
+  { key: 'estimated1RM', label: 'Est. 1RM', unit: 'kg' },
+  { key: 'maxWeight', label: 'Top set', unit: 'kg' },
+  { key: 'totalVolume', label: 'Volume', unit: 'kg' },
+];
+
+const RANGES = [
+  { key: 90, label: '3M' },
+  { key: 180, label: '6M' },
+  { key: 365, label: '1Y' },
+  { key: 0, label: 'All' },
+];
+
+const LAST_KEY = 'liftlog.progress.exercise';
 
 export default function ProgressPage() {
-  const [categories, setCategories] = useState([]);
-  const [exerciseId, setExerciseId] = useState('');
-  const [metric, setMetric] = useState('maxWeight');
-  const [chartType, setChartType] = useState('line');
+  const toast = useToast();
+  const [exercises, setExercises] = useState([]);
+  const [selected, setSelected] = useState(null);
+  const [metric, setMetric] = useState('estimated1RM');
+  const [range, setRange] = useState(180);
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [initLoading, setInitLoading] = useState(true);
+  const [initialising, setInitialising] = useState(true);
 
   useEffect(() => {
-    exercisesApi.list().then(setCategories).catch(console.error).finally(() => setInitLoading(false));
+    exercisesApi
+      .list()
+      .then((categories) => {
+        const flat = categories.flatMap((c) => c.exercises.map((ex) => ({ ...ex, category: c.category })));
+        setExercises(flat);
+        // Reopen on whatever you were last looking at. Re-picking your main
+        // lift from a dropdown every single visit is pure friction.
+        const lastId = Number(localStorage.getItem(LAST_KEY));
+        setSelected(flat.find((ex) => ex.id === lastId) || null);
+      })
+      .catch((err) => toast.error(err.message || 'Could not load exercises.'))
+      .finally(() => setInitialising(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
-    if (!exerciseId) return;
+    if (!selected) return;
+    localStorage.setItem(LAST_KEY, String(selected.id));
     setLoading(true);
-    progressApi.get(exerciseId, metric)
+    progressApi
+      .get(selected.id, metric)
       .then(setData)
-      .catch(console.error)
+      .catch((err) => toast.error(err.message || 'Could not load progress.'))
       .finally(() => setLoading(false));
-  }, [exerciseId, metric]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selected, metric]);
 
-  if (initLoading) return <Box sx={{ display: 'flex', justifyContent: 'center', mt: 4 }}><CircularProgress /></Box>;
+  const points = useMemo(() => {
+    const cutoff = range ? Date.now() - range * 86_400_000 : 0;
+    return data
+      .map((d) => ({ date: new Date(d.date), value: Number(d.value) }))
+      .filter((d) => d.date.getTime() >= cutoff)
+      .sort((a, b) => a.date - b.date);
+  }, [data, range]);
 
-  const allExercises = categories.flatMap(c => c.exercises);
-  const chartData = data.map(d => ({ ...d, date: new Date(d.date) }));
-  const metricLabel = metric === 'maxWeight' ? 'Max Weight' : 'Total Volume';
+  const meta = METRICS.find((m) => m.key === metric);
+
+  // Best, latest, and the change between first and last point in view. The
+  // delta is the number you actually came here for; a line alone makes you
+  // squint at two ends of a chart to work it out.
+  const summary = useMemo(() => {
+    if (points.length === 0) return null;
+    const best = Math.max(...points.map((p) => p.value));
+    const latest = points[points.length - 1].value;
+    const first = points[0].value;
+    const change = first > 0 ? ((latest - first) / first) * 100 : 0;
+    return { best, latest, change, sessions: points.length };
+  }, [points]);
+
+  if (initialising) {
+    return (
+      <Box>
+        <Skeleton variant="rectangular" height={56} sx={{ mb: 2 }} />
+        <Skeleton variant="rectangular" height={280} />
+      </Box>
+    );
+  }
 
   return (
     <Box>
-      <Typography variant="h5" fontWeight={700} sx={{ mb: 2 }}>Progress</Typography>
+      <Typography variant="h5" sx={{ mb: 2 }}>
+        Progress
+      </Typography>
 
-      <FormControl fullWidth sx={{ mb: 2 }}>
-        <InputLabel>Exercise</InputLabel>
-        <Select value={exerciseId} label="Exercise"
-          onChange={e => setExerciseId(e.target.value)}>
-          {allExercises.map(ex => (
-            <MenuItem key={ex.id} value={ex.id}>{ex.name}</MenuItem>
-          ))}
-        </Select>
-      </FormControl>
+      <Autocomplete
+        options={exercises}
+        value={selected}
+        onChange={(_, v) => setSelected(v)}
+        groupBy={(o) => o.category}
+        getOptionLabel={(o) => o.name}
+        isOptionEqualToValue={(a, b) => a.id === b.id}
+        renderInput={(params) => <TextField {...params} label="Exercise" placeholder="Search your lifts" />}
+        sx={{ mb: 2 }}
+      />
 
-      <Box sx={{ display: 'flex', gap: 2, mb: 2 }}>
-        <FormControl sx={{ minWidth: 140 }}>
-          <InputLabel>Metric</InputLabel>
-          <Select value={metric} label="Metric" onChange={e => setMetric(e.target.value)}>
-            <MenuItem value="maxWeight">Max Weight</MenuItem>
-            <MenuItem value="totalVolume">Total Volume</MenuItem>
-          </Select>
-        </FormControl>
+      {!selected ? (
+        <EmptyState
+          icon={<ShowChartRounded />}
+          title="Pick a lift"
+          description="Choose an exercise to see how it has moved over time."
+        />
+      ) : (
+        <>
+          <Stack direction="row" spacing={1} sx={{ mb: 2 }}>
+            <ToggleButtonGroup
+              exclusive
+              size="small"
+              value={metric}
+              onChange={(_, v) => v && setMetric(v)}
+              sx={{ flex: 1 }}
+            >
+              {METRICS.map((m) => (
+                <ToggleButton key={m.key} value={m.key} sx={{ flex: 1 }}>
+                  {m.label}
+                </ToggleButton>
+              ))}
+            </ToggleButtonGroup>
+          </Stack>
 
-        <ToggleButtonGroup value={chartType} exclusive
-          onChange={(_, v) => { if (v) setChartType(v); }}>
-          <ToggleButton value="line">Line</ToggleButton>
-          <ToggleButton value="bar">Bar</ToggleButton>
-        </ToggleButtonGroup>
-      </Box>
+          <ToggleButtonGroup
+            exclusive
+            size="small"
+            value={range}
+            onChange={(_, v) => v !== null && setRange(v)}
+            sx={{ mb: 2, width: '100%' }}
+          >
+            {RANGES.map((r) => (
+              <ToggleButton key={r.key} value={r.key} sx={{ flex: 1 }}>
+                {r.label}
+              </ToggleButton>
+            ))}
+          </ToggleButtonGroup>
 
-      {loading && <CircularProgress />}
+          {loading ? (
+            <Skeleton variant="rectangular" height={300} />
+          ) : points.length === 0 ? (
+            <EmptyState
+              title="No data in this range"
+              description={`Nothing logged for ${selected.name} here. Try a wider range.`}
+            />
+          ) : (
+            <>
+              {summary && (
+                <Card sx={{ p: 2, mb: 2 }}>
+                  <Stack direction="row" spacing={3}>
+                    <Stat label="Latest" value={kg(summary.latest)} unit={meta.unit} accent />
+                    <Stat label="Best" value={kg(summary.best)} unit={meta.unit} />
+                    <Stat
+                      label="Change"
+                      value={`${summary.change >= 0 ? '+' : ''}${summary.change.toFixed(1)}%`}
+                    />
+                  </Stack>
+                </Card>
+              )}
 
-      {!loading && exerciseId && chartData.length > 0 && (
-        <Card>
-          <CardContent>
-            {chartType === 'line' ? (
-              <LineChart
-                xAxis={[{
-                  data: chartData.map(d => d.date),
-                  scaleType: 'time',
-                  label: 'Date',
-                }]}
-                series={[{
-                  data: chartData.map(d => Number(d.value)),
-                  label: metricLabel,
-                  color: '#90caf9',
-                }]}
-                height={300}
-              />
-            ) : (
-              <BarChart
-                xAxis={[{
-                  data: chartData.map(d => d.date),
-                  scaleType: 'band',
-                  valueFormatter: (d) => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
-                }]}
-                series={[{
-                  data: chartData.map(d => Number(d.value)),
-                  label: metricLabel,
-                  color: '#90caf9',
-                }]}
-                height={300}
-              />
-            )}
-          </CardContent>
-        </Card>
-      )}
+              <Card sx={{ p: 1, pt: 2 }}>
+                <LineChart
+                  xAxis={[
+                    {
+                      data: points.map((p) => p.date),
+                      scaleType: 'time',
+                      valueFormatter: (d) => shortDate(d),
+                    },
+                  ]}
+                  series={[
+                    {
+                      data: points.map((p) => p.value),
+                      label: meta.label,
+                      color: ink.accent,
+                      showMark: points.length < 40,
+                      valueFormatter: (v) => `${kg(v)} ${meta.unit}`,
+                    },
+                  ]}
+                  height={300}
+                  margin={{ left: 52, right: 16, top: 16, bottom: 28 }}
+                  grid={{ horizontal: true }}
+                  // One series, and the metric is already named on the toggle
+                  // above — a legend would just repeat it and eat chart height.
+                  hideLegend
+                  sx={{
+                    '& .MuiChartsAxis-line, & .MuiChartsAxis-tick': { stroke: ink.line },
+                    '& .MuiChartsAxis-tickLabel': { fill: ink.dim, fontSize: 11 },
+                    '& .MuiChartsGrid-line': { stroke: ink.line },
+                  }}
+                />
+              </Card>
 
-      {!loading && exerciseId && chartData.length === 0 && (
-        <Typography color="text.secondary">No data yet for this exercise. Log some workouts first.</Typography>
-      )}
-
-      {!exerciseId && (
-        <Typography color="text.secondary">Select an exercise to view your progress.</Typography>
+              <SectionHeader>Sessions</SectionHeader>
+              <Card>
+                {[...points]
+                  .reverse()
+                  .slice(0, 12)
+                  .map((p, i, arr) => {
+                    const prev = arr[i + 1];
+                    const delta = prev ? p.value - prev.value : 0;
+                    return (
+                      <Stack
+                        key={p.date.getTime()}
+                        direction="row"
+                        justifyContent="space-between"
+                        alignItems="center"
+                        sx={{ px: 1.5, py: 1, borderTop: i ? `1px solid ${ink.line}` : 'none' }}
+                      >
+                        <Label>{shortDate(p.date)}</Label>
+                        <Stack direction="row" spacing={1.5} alignItems="baseline">
+                          {prev && delta !== 0 && (
+                            <Label sx={{ color: delta > 0 ? 'secondary.main' : 'text.secondary' }}>
+                              {delta > 0 ? '+' : ''}
+                              {kg(delta)}
+                            </Label>
+                          )}
+                          <Typography sx={{ fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>
+                            {kg(p.value)}
+                            <Typography component="span" sx={{ color: 'text.secondary', fontSize: '0.72rem', ml: 0.4 }}>
+                              {meta.unit}
+                            </Typography>
+                          </Typography>
+                        </Stack>
+                      </Stack>
+                    );
+                  })}
+              </Card>
+            </>
+          )}
+        </>
       )}
     </Box>
   );

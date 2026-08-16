@@ -1,45 +1,71 @@
 import { useNavigate } from 'react-router-dom';
-import {
-  Card, CardActionArea, CardContent, Typography, Chip, Stack
-} from '@mui/material';
-import { CalendarTodayRounded, HotelRounded } from '@mui/icons-material';
+import { Card, CardActionArea, Box, Typography, Stack } from '@mui/material';
+import { HotelRounded } from '@mui/icons-material';
+import { Label } from '../ui/Bits';
+import { ink } from '../../theme';
+import { relativeDay, volumeLabel } from '../../lib/format';
 
 export default function WorkoutCard({ workout }) {
   const navigate = useNavigate();
-  const date = new Date(workout.date).toLocaleDateString('en-US', {
-    weekday: 'short', month: 'short', day: 'numeric',
-  });
 
   return (
-    <Card sx={{ mb: 1.5 }}>
-      <CardActionArea onClick={() => navigate(`/workouts/${workout.id}`)}>
-        <CardContent>
-          <Stack direction="row" justifyContent="space-between" alignItems="center">
-            <Stack direction="row" alignItems="center" spacing={1}>
-              {workout.isRestDay ? (
-                <HotelRounded fontSize="small" color="secondary" />
-              ) : (
-                <CalendarTodayRounded fontSize="small" color="primary" />
-              )}
-              <Typography variant="subtitle1" fontWeight={600}>
-                {workout.planDayName ? `${workout.planDayName} — ${date}` : date}
-              </Typography>
-            </Stack>
-            {workout.isRestDay ? (
-              <Chip label="Rest Day" size="small" color="secondary" variant="outlined" />
-            ) : (
-              <Stack direction="row" spacing={1}>
-                <Chip label={`${workout.exerciseCount} exercises`} size="small" />
-                <Chip label={`${workout.setCount} sets`} size="small" variant="outlined" />
-              </Stack>
-            )}
+    <Card sx={{ mb: 1 }}>
+      <CardActionArea onClick={() => navigate(`/workouts/${workout.id}`)} sx={{ borderRadius: 0 }}>
+        <Box sx={{ p: 1.5 }}>
+          <Stack direction="row" justifyContent="space-between" alignItems="baseline" spacing={1}>
+            <Typography sx={{ fontWeight: 800, letterSpacing: '-0.01em' }}>
+              {workout.planDayName || (workout.isRestDay ? 'Rest' : 'Workout')}
+            </Typography>
+            <Label sx={{ whiteSpace: 'nowrap' }}>{relativeDay(workout.date)}</Label>
           </Stack>
+
+          {workout.isRestDay ? (
+            <Stack direction="row" alignItems="center" spacing={0.5} sx={{ mt: 0.5, color: 'text.secondary' }}>
+              <HotelRounded sx={{ fontSize: 14 }} />
+              <Label>Rest day</Label>
+            </Stack>
+          ) : (
+            <>
+              {/* The exercise names are the point of a history card — "3
+                  exercises, 9 sets" tells you nothing you'd search for. */}
+              {workout.exerciseNames && (
+                <Typography
+                  sx={{
+                    mt: 0.4,
+                    fontSize: '0.82rem',
+                    color: 'text.secondary',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  {workout.exerciseNames}
+                </Typography>
+              )}
+              <Stack direction="row" spacing={2} sx={{ mt: 0.75 }}>
+                <Label>{workout.setCount} sets</Label>
+                <Label>{workout.exerciseCount} lifts</Label>
+                {workout.volume > 0 && (
+                  <Label sx={{ color: 'primary.main' }}>{volumeLabel(Number(workout.volume))}</Label>
+                )}
+              </Stack>
+            </>
+          )}
+
           {workout.notes && (
-            <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+            <Typography
+              sx={{
+                mt: 0.75,
+                pl: 1,
+                borderLeft: `2px solid ${ink.line}`,
+                fontSize: '0.8rem',
+                color: 'text.secondary',
+              }}
+            >
               {workout.notes}
             </Typography>
           )}
-        </CardContent>
+        </Box>
       </CardActionArea>
     </Card>
   );

@@ -51,7 +51,14 @@ builder.Services.AddAuthentication(options =>
     };
 });
 
-builder.Services.AddHttpClient<server.Services.GroqService>();
+// Plan generation runs against a self-hosted model by default. The hosted
+// path stays available behind `Ai:Provider=groq` so the two can be compared
+// on the real box without a redeploy.
+if (string.Equals(builder.Configuration["Ai:Provider"], "groq", StringComparison.OrdinalIgnoreCase))
+    builder.Services.AddHttpClient<server.Services.IPlanGenerator, server.Services.GroqPlanGenerator>();
+else
+    builder.Services.AddHttpClient<server.Services.IPlanGenerator, server.Services.OllamaPlanGenerator>();
+
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(c =>
