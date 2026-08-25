@@ -12,6 +12,10 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
+      // Registered explicitly in main.jsx instead of the auto-injected
+      // script, so the app controls the update-check cadence rather than
+      // relying on whatever the browser does on its own schedule.
+      injectRegister: false,
       manifest: {
         name: 'LiftLog',
         short_name: 'LiftLog',
