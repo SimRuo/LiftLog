@@ -18,7 +18,6 @@ public class LogRestDayRequest
     [Required]
     public DateTime Date { get; set; }
     public string? Notes { get; set; }
-    public int? PlanDayId { get; set; }
 }
 
 public class CreateSetRequest

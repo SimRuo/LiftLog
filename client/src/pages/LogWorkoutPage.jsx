@@ -315,7 +315,6 @@ export default function LogWorkoutPage() {
       await workoutsApi.logRest({
         date,
         notes: notes.trim() || null,
-        planDayId: nextDay?.planDayId || null,
       });
       localStorage.removeItem(DRAFT_KEY);
       toast.success('Rest day logged.');

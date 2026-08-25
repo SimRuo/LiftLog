@@ -51,13 +51,16 @@ public class WorkoutsController : ControllerBase
             .OrderBy(d => d.Order)
             .ToList();
 
-        // Find last session's plan day order
+        // Find last *trained* session's plan day order. Rest days must never
+        // advance the rotation — a rest day carries no PlanDayId (see
+        // LogRestDay), but IsRestDay = 0 is kept here too as belt-and-braces
+        // against a stray one ever slipping through and eating a training day.
         var lastOrder = await _db.QueryFirstOrDefaultAsync<int?>(
             @"SELECT TOP 1 d.[Order]
               FROM WorkoutSessions ws
               INNER JOIN PlanDays d ON d.Id = ws.PlanDayId
               INNER JOIN WorkoutPlans p ON p.Id = d.WorkoutPlanId AND p.IsActive = 1
-              WHERE ws.UserId = @UserId AND ws.PlanDayId IS NOT NULL
+              WHERE ws.UserId = @UserId AND ws.PlanDayId IS NOT NULL AND ws.IsRestDay = 0
               ORDER BY ws.Date DESC, ws.CreatedAt DESC",
             new { UserId });
 
@@ -200,11 +203,16 @@ public class WorkoutsController : ControllerBase
     [HttpPost("rest")]
     public async Task<ActionResult<WorkoutDetailResponse>> LogRestDay(LogRestDayRequest request)
     {
+        // No PlanDayId, ever — a rest day isn't a slot in the routine, it's
+        // the absence of one. Tagging it with the day you skipped is what let
+        // a rest log masquerade as a completed training day and skip that day
+        // in the rotation (see GetNextWorkout), and it also made a rest day's
+        // history card show that day's name instead of "Rest".
         var sessionId = await _db.QuerySingleAsync<int>(
             @"INSERT INTO WorkoutSessions (UserId, Date, Notes, PlanDayId, CreatedAt, IsRestDay)
               OUTPUT INSERTED.Id
-              VALUES (@UserId, @Date, @Notes, @PlanDayId, SYSUTCDATETIME(), 1)",
-            new { UserId, request.Date, request.Notes, request.PlanDayId });
+              VALUES (@UserId, @Date, @Notes, NULL, SYSUTCDATETIME(), 1)",
+            new { UserId, request.Date, request.Notes });
 
         return CreatedAtAction(nameof(GetWorkout), new { id = sessionId },
             await GetWorkoutDetail(sessionId));
