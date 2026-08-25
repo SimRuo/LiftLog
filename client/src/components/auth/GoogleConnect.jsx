@@ -1,11 +1,11 @@
-import { useEffect, useRef, useState } from 'react';
-import { Box, Button, Stack, Typography, Skeleton } from '@mui/material';
-import { CheckCircleRounded } from '@mui/icons-material';
-import { authApi } from '../../api/auth';
-import { createCodeClient } from '../../auth/google';
-import { GoogleMark } from './GoogleSignIn';
-import { Label, SectionHeader } from '../ui/Bits';
-import { ink } from '../../theme';
+import { useEffect, useRef, useState } from "react";
+import { Box, Button, Stack, Typography, Skeleton } from "@mui/material";
+import { CheckCircleRounded } from "@mui/icons-material";
+import { authApi } from "../../api/auth";
+import { createCodeClient } from "../../auth/google";
+import { GoogleMark } from "./GoogleSignIn";
+import { Label, SectionHeader } from "../ui/Bits";
+import { ink } from "../../theme";
 
 /**
  * Account-page widget: connect or disconnect Google for the *already signed
@@ -24,6 +24,7 @@ export default function GoogleConnect({ onError, refreshSignal }) {
   const [enabled, setEnabled] = useState(false);
   const [status, setStatus] = useState(null); // { linked, email, canUnlink }
   const [busy, setBusy] = useState(false);
+  const [clientReady, setClientReady] = useState(false);
   const clientRef = useRef(null);
   const alive = useRef(true);
 
@@ -46,7 +47,7 @@ export default function GoogleConnect({ onError, refreshSignal }) {
       try {
         [cfg] = await Promise.all([authApi.googleConfig(), refreshStatus()]);
       } catch (err) {
-        if (alive.current) onError?.(err.message || 'Could not load Google connection status.');
+        if (alive.current) onError?.(err.message || "Could not load Google connection status.");
         return;
       } finally {
         if (alive.current) setLoading(false);
@@ -57,7 +58,7 @@ export default function GoogleConnect({ onError, refreshSignal }) {
       // Built ahead of time for the same reason as the login button: the
       // popup has to open synchronously inside the click.
       try {
-        clientRef.current = await createCodeClient({
+        const client = await createCodeClient({
           clientId: cfg.clientId,
           scope: cfg.scope,
           onCode: async (code) => {
@@ -65,7 +66,7 @@ export default function GoogleConnect({ onError, refreshSignal }) {
               await authApi.googleLink(code);
               await refreshStatus();
             } catch (err) {
-              if (alive.current) onError?.(err.message || 'Could not connect that Google account.');
+              if (alive.current) onError?.(err.message || "Could not connect that Google account.");
             } finally {
               if (alive.current) setBusy(false);
             }
@@ -76,6 +77,9 @@ export default function GoogleConnect({ onError, refreshSignal }) {
             if (err) onError?.(err.message);
           },
         });
+        if (!alive.current) return;
+        clientRef.current = client;
+        setClientReady(true);
       } catch (err) {
         if (alive.current) onError?.(err.message);
       }
@@ -101,7 +105,7 @@ export default function GoogleConnect({ onError, refreshSignal }) {
       await authApi.googleUnlink();
       await refreshStatus();
     } catch (err) {
-      onError?.(err.message || 'Could not disconnect Google.');
+      onError?.(err.message || "Could not disconnect Google.");
     } finally {
       if (alive.current) setBusy(false);
     }
@@ -116,17 +120,12 @@ export default function GoogleConnect({ onError, refreshSignal }) {
 
       {status?.linked ? (
         <Stack direction="row" alignItems="center" spacing={1.5}>
-          <CheckCircleRounded sx={{ color: 'success.main', fontSize: 20 }} />
+          <CheckCircleRounded sx={{ color: "success.main", fontSize: 20 }} />
           <Box sx={{ flex: 1 }}>
             <Typography sx={{ fontWeight: 700 }}>Google connected</Typography>
             {status.email && <Label>{status.email}</Label>}
           </Box>
-          <Button
-            size="small"
-            disabled={busy || !status.canUnlink}
-            onClick={handleUnlink}
-            sx={{ color: 'text.secondary' }}
-          >
+          <Button size="small" disabled={busy || !status.canUnlink} onClick={handleUnlink} sx={{ color: "text.secondary" }}>
             Disconnect
           </Button>
         </Stack>
@@ -135,7 +134,7 @@ export default function GoogleConnect({ onError, refreshSignal }) {
           fullWidth
           size="large"
           variant="outlined"
-          disabled={busy || !clientRef.current}
+          disabled={busy || !clientReady}
           onClick={() => {
             setBusy(true);
             clientRef.current?.requestCode();
@@ -144,15 +143,15 @@ export default function GoogleConnect({ onError, refreshSignal }) {
           sx={{
             color: ink.text,
             borderColor: ink.lineBright,
-            '&:hover': { borderColor: ink.text, bgcolor: ink.raised },
+            "&:hover": { borderColor: ink.text, bgcolor: ink.raised },
           }}
         >
-          {busy ? 'Waiting for Google…' : 'Connect Google account'}
+          {busy ? "Waiting for Google…" : "Connect Google account"}
         </Button>
       )}
 
       {status?.linked && !status.canUnlink && (
-        <Typography sx={{ mt: 1, fontSize: '0.78rem', color: 'text.secondary' }}>
+        <Typography sx={{ mt: 1, fontSize: "0.78rem", color: "text.secondary" }}>
           Set a password to be able to disconnect Google — otherwise it's the only way into this account.
         </Typography>
       )}
