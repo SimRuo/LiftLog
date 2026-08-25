@@ -85,7 +85,11 @@ export default function AppLayout() {
               sx={{ mr: 1 }}
             />
           )}
-          <IconButton color="inherit" onClick={(e) => setAnchorEl(e.currentTarget)} aria-label="Account">
+          <IconButton
+            onClick={(e) => setAnchorEl(e.currentTarget)}
+            aria-label="Account"
+            sx={{ color: location.pathname.startsWith('/account') ? 'primary.main' : 'inherit' }}
+          >
             <AccountCircleOutlined />
           </IconButton>
           <Menu anchorEl={anchorEl} open={!!anchorEl} onClose={() => setAnchorEl(null)}>
@@ -140,7 +144,7 @@ export default function AppLayout() {
         }}
       >
         <BottomNavigation
-          value={currentNav >= 0 ? currentNav : 0}
+          value={currentNav}
           onChange={(_, idx) => navigate(navItems[idx].path)}
           showLabels
         >
