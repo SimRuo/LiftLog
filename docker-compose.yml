@@ -56,6 +56,11 @@ services:
       Jwt__Key: ${JWT_KEY}
       Jwt__Issuer: "LiftLog"
       Jwt__Audience: "LiftLog"
+      # Empty means "no Google button". The client asks the server whether the
+      # feature is on, so an unconfigured deploy degrades to the password form
+      # rather than showing a button that can't work.
+      Google__ClientId: ${GOOGLE_CLIENT_ID:-}
+      Google__ClientSecret: ${GOOGLE_CLIENT_SECRET:-}
       Ai__Provider: "ollama"
       Ollama__BaseUrl: "http://ollama:11434"
       Ollama__Model: "qwen3:4b-instruct"

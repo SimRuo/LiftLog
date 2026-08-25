@@ -51,6 +51,12 @@ builder.Services.AddAuthentication(options =>
     };
 });
 
+// Google sign-in. Bound rather than read ad hoc so the "is it configured?"
+// question has one answer, and an unconfigured deployment simply doesn't offer
+// the button instead of failing at startup.
+builder.Services.Configure<server.Services.GoogleAuthOptions>(builder.Configuration.GetSection("Google"));
+builder.Services.AddHttpClient<server.Services.GoogleAuthService>();
+
 // Plan generation runs against a self-hosted model by default. The hosted
 // path stays available behind `Ai:Provider=groq` so the two can be compared
 // on the real box without a redeploy.

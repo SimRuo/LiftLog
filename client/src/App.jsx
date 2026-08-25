@@ -16,6 +16,7 @@ import LogWorkoutPage from './pages/LogWorkoutPage';
 import WorkoutDetailPage from './pages/WorkoutDetailPage';
 import PlanPage from './pages/PlanPage';
 import PlanEditPage from './pages/PlanEditPage';
+import AccountPage from './pages/AccountPage';
 
 // The charting library is by far the largest dependency in the bundle and is
 // only needed on one tab. Splitting it keeps the first load — the one that
@@ -71,6 +72,7 @@ export default function App() {
                     <Route path="workouts/:id" element={<WorkoutDetailPage />} />
                     <Route path="plan" element={<PlanPage />} />
                     <Route path="plan/edit" element={<PlanEditPage />} />
+                    <Route path="account" element={<AccountPage />} />
                     <Route
                       path="progress"
                       element={
