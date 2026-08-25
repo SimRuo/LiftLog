@@ -94,6 +94,14 @@ export default function AppLayout() {
               <Typography sx={{ fontWeight: 700 }}>{username}</Typography>
             </Box>
             <Divider />
+            <MenuItem
+              onClick={() => {
+                setAnchorEl(null);
+                navigate('/account');
+              }}
+            >
+              Account
+            </MenuItem>
             <MenuItem onClick={handleLogout}>Sign out</MenuItem>
           </Menu>
         </Toolbar>

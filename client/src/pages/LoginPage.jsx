@@ -5,6 +5,7 @@ import { FitnessCenterRounded } from '@mui/icons-material';
 import { authApi } from '../api/auth';
 import { useAuth } from '../context/auth-context';
 import { Label } from '../components/ui/Bits';
+import GoogleSignIn from '../components/auth/GoogleSignIn';
 import { ink } from '../theme';
 
 export default function LoginPage() {
@@ -33,6 +34,15 @@ export default function LoginPage() {
     } finally {
       setLoading(false);
     }
+  };
+
+  // Google is one button for both signing up and signing back in, so a brand
+  // new account goes to the plan editor — landing on an empty workout list
+  // with no explanation is the worst first screen we have.
+  const handleGoogle = (token, username, isNew) => {
+    clearExpiredNotice();
+    login(token, username);
+    navigate(isNew ? '/plan/edit' : from, { replace: true });
   };
 
   return (
@@ -65,6 +75,8 @@ export default function LoginPage() {
           {error}
         </Alert>
       )}
+
+      <GoogleSignIn onSuccess={handleGoogle} onError={setError} />
 
       <Box component="form" onSubmit={handleSubmit}>
         <Stack spacing={2}>

@@ -5,6 +5,7 @@ import { FitnessCenterRounded } from '@mui/icons-material';
 import { authApi } from '../api/auth';
 import { useAuth } from '../context/auth-context';
 import { Label } from '../components/ui/Bits';
+import GoogleSignIn from '../components/auth/GoogleSignIn';
 import { ink } from '../theme';
 
 export default function RegisterPage() {
@@ -37,6 +38,14 @@ export default function RegisterPage() {
     }
   };
 
+  // Someone who already has a Google-linked account and taps this by mistake
+  // gets signed in rather than an error — the button does both jobs, so the
+  // only thing worth branching on is where they land.
+  const handleGoogle = (token, username, isNew) => {
+    login(token, username);
+    navigate(isNew ? '/plan/edit' : '/workouts', { replace: true });
+  };
+
   return (
     <Box
       sx={{
@@ -62,6 +71,8 @@ export default function RegisterPage() {
           {error}
         </Alert>
       )}
+
+      <GoogleSignIn onSuccess={handleGoogle} onError={setError} label="Continue with Google" />
 
       <Box component="form" onSubmit={handleSubmit}>
         <Stack spacing={2}>

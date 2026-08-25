@@ -26,6 +26,8 @@ jobs:
           git pull origin main
           export MSSQL_SA_PASSWORD='${{ secrets.MSSQL_SA_PASSWORD }}'
           export JWT_KEY='${{ secrets.JWT_KEY }}'
+          export GOOGLE_CLIENT_ID='${{ secrets.GOOGLE_CLIENT_ID }}'
+          export GOOGLE_CLIENT_SECRET='${{ secrets.GOOGLE_CLIENT_SECRET }}'
           docker compose down
           docker compose up -d --build
           # Idempotent: a no-op once the model is in the ollama-models volume,
