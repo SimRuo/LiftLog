@@ -1,6 +1,6 @@
 import { useNavigate } from 'react-router-dom';
-import { Card, CardActionArea, Box, Typography, Stack } from '@mui/material';
-import { HotelRounded } from '@mui/icons-material';
+import { Card, CardActionArea, Box, Typography, Stack, Chip } from '@mui/material';
+import { HotelRounded, CloudUploadOutlined } from '@mui/icons-material';
 import { Label } from '../ui/Bits';
 import { ink } from '../../theme';
 import { relativeDay, volumeLabel } from '../../lib/format';
@@ -16,7 +16,22 @@ export default function WorkoutCard({ workout }) {
             <Typography sx={{ fontWeight: 800, letterSpacing: '-0.01em' }}>
               {workout.planDayName || (workout.isRestDay ? 'Rest' : 'Workout')}
             </Typography>
-            <Label sx={{ whiteSpace: 'nowrap' }}>{relativeDay(workout.date)}</Label>
+            <Stack direction="row" alignItems="center" spacing={0.75}>
+              {/* Logged on the device and not yet uploaded. Worth saying on the
+                  card itself — "did that session save?" is the question a
+                  queued write invites, and silence is the wrong answer. */}
+              {workout.pendingSync && (
+                <Chip
+                  size="small"
+                  icon={<CloudUploadOutlined sx={{ fontSize: 12 }} />}
+                  label="Pending"
+                  variant="outlined"
+                  color="primary"
+                  sx={{ height: 20, '& .MuiChip-label': { px: 0.6, fontSize: '0.62rem' } }}
+                />
+              )}
+              <Label sx={{ whiteSpace: 'nowrap' }}>{relativeDay(workout.date)}</Label>
+            </Stack>
           </Stack>
 
           {workout.isRestDay ? (

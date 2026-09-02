@@ -93,6 +93,15 @@ export default function WorkoutDetailPage() {
           <Typography variant="h5" sx={{ mt: 0.25 }}>
             {workout.planDayName || (workout.isRestDay ? 'Rest day' : 'Workout')}
           </Typography>
+          {workout.pendingSync && (
+            <Chip
+              size="small"
+              label="Saved on this device — not uploaded yet"
+              variant="outlined"
+              color="primary"
+              sx={{ mt: 0.75 }}
+            />
+          )}
         </Box>
         <IconButton onClick={() => setDeleteOpen(true)} aria-label="Delete workout" sx={{ mt: -0.5 }}>
           <DeleteOutlineRounded />

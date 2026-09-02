@@ -5,6 +5,7 @@ import { PlayArrowRounded, ListAltRounded } from '@mui/icons-material';
 import WorkoutCard from '../components/workout/WorkoutCard';
 import { Label, SectionHeader, EmptyState, ListSkeleton, Stat } from '../components/ui/Bits';
 import { workoutsApi } from '../api/workouts';
+import { onOutboxChange } from '../offline/store';
 import { useToast } from '../components/ui/toast-context';
 import { ink } from '../theme';
 import { summariseSets, volumeLabel, relativeDay } from '../lib/format';
@@ -66,8 +67,10 @@ function WeekStrip({ workouts }) {
   );
 }
 
-/** What's next, with last session's numbers already visible. */
-function UpNext() {
+/** What's next, with last session's numbers already visible.
+ *  `refreshKey` changes when the outbox does, because a session uploading is
+ *  exactly the thing that moves this card on to the following day. */
+function UpNext({ refreshKey }) {
   const navigate = useNavigate();
   const [day, setDay] = useState(null);
   const [state, setState] = useState('loading');
@@ -79,10 +82,25 @@ function UpNext() {
         setDay(d);
         setState('ready');
       })
-      .catch(() => setState('none'));
-  }, []);
+      // A dead connection isn't a missing plan. Telling someone to create one
+      // they already have is worse than saying nothing useful is on the device.
+      .catch((err) => setState(err.status === 0 ? 'offline' : 'none'));
+  }, [refreshKey]);
 
   if (state === 'loading') return <ListSkeleton count={1} lines={4} />;
+  if (state === 'offline') {
+    return (
+      <Card sx={{ p: 2, mb: 3 }}>
+        <Label>Offline</Label>
+        <Typography sx={{ fontWeight: 700, mt: 0.5 }}>
+          Your plan hasn't been saved to this device yet.
+        </Typography>
+        <Typography sx={{ fontSize: '0.85rem', color: 'text.secondary', mt: 0.5 }}>
+          Open LiftLog once with a connection and it'll be here next time.
+        </Typography>
+      </Card>
+    );
+  }
   if (state === 'none' || !day) {
     return (
       <Card sx={{ p: 2, mb: 3 }}>
@@ -137,9 +155,12 @@ function UpNext() {
 export default function WorkoutHistoryPage() {
   const toast = useToast();
   const [items, setItems] = useState([]);
+  const [pendingItems, setPendingItems] = useState([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
+  const [loadFailed, setLoadFailed] = useState(false);
+  const [reload, setReload] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -152,33 +173,76 @@ export default function WorkoutHistoryPage() {
         // sessions is a desktop-table idea, not a phone one.
         setItems((prev) => (page === 1 ? data.items : [...prev, ...data.items]));
         setTotal(data.totalCount);
+        setLoadFailed(false);
       })
-      .catch((err) => !cancelled && toast.error(err.message || 'Could not load your history.'))
+      .catch((err) => {
+        if (cancelled) return;
+        setLoadFailed(true);
+        toast.error(err.message || 'Could not load your history.');
+      })
       .finally(() => !cancelled && setLoading(false));
     return () => {
       cancelled = true;
     };
     // toast is stable for the life of the provider
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page]);
+  }, [page, reload]);
+
+  // Sessions logged on this device that haven't uploaded yet, kept in step with
+  // the queue itself rather than polled.
+  useEffect(() => {
+    let cancelled = false;
+    const load = () =>
+      workoutsApi.pendingSummaries().then((rows) => !cancelled && setPendingItems(rows));
+
+    load();
+    const unsubscribe = onOutboxChange(() => {
+      load();
+      // A session that just uploaded now exists on the server, so the list it
+      // was merged into is stale. Start the window over rather than append to
+      // it — appending a refetched page 3 onto pages 1-3 would duplicate rows.
+      setPage(1);
+      setReload((n) => n + 1);
+    });
+
+    return () => {
+      cancelled = true;
+      unsubscribe();
+    };
+  }, []);
+
+  // Pending writes belong in the same list as everything else — a session you
+  // just finished is the one you most want to see, and hiding it until it
+  // uploads reads as if it wasn't saved. Sorted with the rest by date, and
+  // ahead of a server row on the same day since it is by definition newer.
+  const visible = useMemo(() => {
+    const merged = [...pendingItems, ...items];
+    return merged.sort((a, b) => {
+      const byDate = String(b.date).localeCompare(String(a.date));
+      if (byDate !== 0) return byDate;
+      return (b.pendingSync ? 1 : 0) - (a.pendingSync ? 1 : 0);
+    });
+  }, [pendingItems, items]);
 
   const totalVolume = useMemo(
-    () => items.slice(0, 30).reduce((sum, w) => sum + Number(w.volume || 0), 0),
-    [items],
+    () => visible.slice(0, 30).reduce((sum, w) => sum + Number(w.volume || 0), 0),
+    [visible],
   );
 
-  const hasMore = items.length < total;
+  // Nothing more to page through once the server list is exhausted — or once
+  // it has failed, where paging would only produce the same error again.
+  const hasMore = !loadFailed && items.length < total;
 
   return (
     <Box>
-      <UpNext />
+      <UpNext refreshKey={reload} />
 
-      {items.length > 0 && <WeekStrip workouts={items} />}
+      {visible.length > 0 && <WeekStrip workouts={visible} />}
 
       <SectionHeader
         action={
-          items.length > 0 ? (
-            <Label sx={{ whiteSpace: 'nowrap' }}>{total} logged</Label>
+          visible.length > 0 ? (
+            <Label sx={{ whiteSpace: 'nowrap' }}>{total + pendingItems.length} logged</Label>
           ) : null
         }
       >
@@ -187,7 +251,7 @@ export default function WorkoutHistoryPage() {
 
       {loading && page === 1 ? (
         <ListSkeleton count={4} />
-      ) : items.length === 0 ? (
+      ) : visible.length === 0 ? (
         <EmptyState
           icon={<ListAltRounded />}
           title="Nothing logged yet"
@@ -195,7 +259,7 @@ export default function WorkoutHistoryPage() {
         />
       ) : (
         <>
-          {items.map((w) => (
+          {visible.map((w) => (
             <WorkoutCard key={w.id} workout={w} />
           ))}
 

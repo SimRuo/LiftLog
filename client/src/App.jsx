@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { ThemeProvider, CssBaseline, Box, Skeleton } from '@mui/material';
 import theme from './theme';
 import { AuthProvider } from './context/AuthContext';
+import { OfflineProvider } from './context/OfflineContext';
 import { RestTimerProvider } from './context/RestTimerContext';
 import { ToastProvider } from './components/ui/Toast';
 import ErrorBoundary from './components/ui/ErrorBoundary';
@@ -39,53 +40,55 @@ export default function App() {
       <ErrorBoundary>
         <ToastProvider>
           <AuthProvider>
-            <RestTimerProvider>
-              <BrowserRouter>
-                <Routes>
-                  <Route
-                    path="/login"
-                    element={
-                      <PublicOnlyRoute>
-                        <LoginPage />
-                      </PublicOnlyRoute>
-                    }
-                  />
-                  <Route
-                    path="/register"
-                    element={
-                      <PublicOnlyRoute>
-                        <RegisterPage />
-                      </PublicOnlyRoute>
-                    }
-                  />
-                  <Route
-                    path="/"
-                    element={
-                      <ProtectedRoute>
-                        <AppLayout />
-                      </ProtectedRoute>
-                    }
-                  >
-                    <Route index element={<Navigate to="/workouts" replace />} />
-                    <Route path="workouts" element={<WorkoutHistoryPage />} />
-                    <Route path="workouts/log" element={<LogWorkoutPage />} />
-                    <Route path="workouts/:id" element={<WorkoutDetailPage />} />
-                    <Route path="plan" element={<PlanPage />} />
-                    <Route path="plan/edit" element={<PlanEditPage />} />
-                    <Route path="account" element={<AccountPage />} />
+            <OfflineProvider>
+              <RestTimerProvider>
+                <BrowserRouter>
+                  <Routes>
                     <Route
-                      path="progress"
+                      path="/login"
                       element={
-                        <Suspense fallback={<RouteFallback />}>
-                          <ProgressPage />
-                        </Suspense>
+                        <PublicOnlyRoute>
+                          <LoginPage />
+                        </PublicOnlyRoute>
                       }
                     />
-                  </Route>
-                  <Route path="*" element={<Navigate to="/workouts" replace />} />
-                </Routes>
-              </BrowserRouter>
-            </RestTimerProvider>
+                    <Route
+                      path="/register"
+                      element={
+                        <PublicOnlyRoute>
+                          <RegisterPage />
+                        </PublicOnlyRoute>
+                      }
+                    />
+                    <Route
+                      path="/"
+                      element={
+                        <ProtectedRoute>
+                          <AppLayout />
+                        </ProtectedRoute>
+                      }
+                    >
+                      <Route index element={<Navigate to="/workouts" replace />} />
+                      <Route path="workouts" element={<WorkoutHistoryPage />} />
+                      <Route path="workouts/log" element={<LogWorkoutPage />} />
+                      <Route path="workouts/:id" element={<WorkoutDetailPage />} />
+                      <Route path="plan" element={<PlanPage />} />
+                      <Route path="plan/edit" element={<PlanEditPage />} />
+                      <Route path="account" element={<AccountPage />} />
+                      <Route
+                        path="progress"
+                        element={
+                          <Suspense fallback={<RouteFallback />}>
+                            <ProgressPage />
+                          </Suspense>
+                        }
+                      />
+                    </Route>
+                    <Route path="*" element={<Navigate to="/workouts" replace />} />
+                  </Routes>
+                </BrowserRouter>
+              </RestTimerProvider>
+            </OfflineProvider>
           </AuthProvider>
         </ToastProvider>
       </ErrorBoundary>

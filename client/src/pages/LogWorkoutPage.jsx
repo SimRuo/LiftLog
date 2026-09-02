@@ -321,15 +321,34 @@ export default function LogWorkoutPage() {
           })),
       );
 
-      await workoutsApi.create({
-        date,
-        notes: notes.trim() || null,
-        planDayId: nextDay.planDayId,
-        sets,
-      });
+      // The display fields ride along so a session queued offline can render a
+      // history card and a detail view before it has ever reached the server —
+      // there is no row to read a plan day name or an exercise name back from.
+      const logged = exercises.filter((ex) => ex.sets.some((set) => set.done));
+      const display = {
+        planDayName: nextDay.dayName,
+        exerciseNames: [...new Set(logged.map((ex) => ex.exerciseName))].sort().join(', '),
+        exerciseNamesById: Object.fromEntries(logged.map((ex) => [ex.exerciseId, ex.exerciseName])),
+      };
+
+      const saved = await workoutsApi.create(
+        {
+          date,
+          notes: notes.trim() || null,
+          planDayId: nextDay.planDayId,
+          sets,
+        },
+        display,
+      );
       localStorage.removeItem(DRAFT_KEY);
       rest.stop();
-      toast.success(`${nextDay.dayName} logged — ${sets.length} sets, ${volumeLabel(totalVolume)}`);
+      if (saved?.pendingSync) {
+        toast.success(
+          `${nextDay.dayName} saved on this device — it uploads when you're back online.`,
+        );
+      } else {
+        toast.success(`${nextDay.dayName} logged — ${sets.length} sets, ${volumeLabel(totalVolume)}`);
+      }
       navigate('/workouts');
     } catch (err) {
       toast.error(err.message || 'Could not save the workout. Your session is still here.');
@@ -341,12 +360,16 @@ export default function LogWorkoutPage() {
   const handleRestDay = async () => {
     setSaving(true);
     try {
-      await workoutsApi.logRest({
+      const saved = await workoutsApi.logRest({
         date,
         notes: notes.trim() || null,
       });
       localStorage.removeItem(DRAFT_KEY);
-      toast.success('Rest day logged.');
+      toast.success(
+        saved?.pendingSync
+          ? "Rest day saved on this device — it uploads when you're back online."
+          : 'Rest day logged.',
+      );
       navigate('/workouts');
     } catch (err) {
       toast.error(err.message || 'Could not log the rest day.');

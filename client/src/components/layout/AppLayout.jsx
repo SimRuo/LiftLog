@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import {
   AppBar,
@@ -13,6 +13,8 @@ import {
   Paper,
   Divider,
   Chip,
+  Alert,
+  Tooltip,
 } from '@mui/material';
 import {
   FitnessCenterRounded,
@@ -22,8 +24,10 @@ import {
   AccountCircleOutlined,
   EventNoteRounded,
   CloudOffRounded,
+  CloudSyncRounded,
 } from '@mui/icons-material';
 import { useAuth } from '../../context/auth-context';
+import { useOffline } from '../../context/offline-context';
 import RestTimerBar from '../workout/RestTimerBar';
 import { Label } from '../ui/Bits';
 import { ink } from '../../theme';
@@ -38,22 +42,12 @@ const navItems = [
 export default function AppLayout() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { username, logout } = useAuth();
-  const [anchorEl, setAnchorEl] = useState(null);
-  const [online, setOnline] = useState(navigator.onLine);
-
+  const { username, logout, readOnly } = useAuth();
   // Being told you're offline before you tap Save is worth a lot more than
-  // finding out from a failed request afterwards.
-  useEffect(() => {
-    const on = () => setOnline(true);
-    const off = () => setOnline(false);
-    window.addEventListener('online', on);
-    window.addEventListener('offline', off);
-    return () => {
-      window.removeEventListener('online', on);
-      window.removeEventListener('offline', off);
-    };
-  }, []);
+  // finding out from a failed request afterwards — and once something is
+  // queued, seeing that it hasn't landed yet matters just as much.
+  const { online, pendingCount, syncing, sync } = useOffline();
+  const [anchorEl, setAnchorEl] = useState(null);
 
   const currentNav = navItems.findIndex((item) =>
     item.exact ? location.pathname === item.path : location.pathname.startsWith(item.path),
@@ -76,14 +70,41 @@ export default function AppLayout() {
           >
             LiftLog
           </Typography>
-          {!online && (
-            <Chip
-              size="small"
-              icon={<CloudOffRounded sx={{ fontSize: 13 }} />}
-              label="Offline"
-              variant="outlined"
-              sx={{ mr: 1 }}
-            />
+          {pendingCount > 0 ? (
+            <Tooltip
+              title={
+                online
+                  ? 'Waiting to upload — tap to retry'
+                  : `${pendingCount} saved on this device, waiting for a connection`
+              }
+            >
+              <Chip
+                size="small"
+                clickable={online && !syncing}
+                onClick={online && !syncing ? () => sync() : undefined}
+                icon={
+                  online ? (
+                    <CloudSyncRounded sx={{ fontSize: 13 }} />
+                  ) : (
+                    <CloudOffRounded sx={{ fontSize: 13 }} />
+                  )
+                }
+                label={syncing ? 'Syncing…' : `${pendingCount} to sync`}
+                variant="outlined"
+                color="primary"
+                sx={{ mr: 1 }}
+              />
+            </Tooltip>
+          ) : (
+            !online && (
+              <Chip
+                size="small"
+                icon={<CloudOffRounded sx={{ fontSize: 13 }} />}
+                label="Offline"
+                variant="outlined"
+                sx={{ mr: 1 }}
+              />
+            )
           )}
           <IconButton
             onClick={(e) => setAnchorEl(e.currentTarget)}
@@ -126,6 +147,12 @@ export default function AppLayout() {
           mx: 'auto',
         }}
       >
+        {readOnly && (
+          <Alert severity="warning" variant="outlined" sx={{ mb: 2 }}>
+            Your session expired while you were offline. You can still read what's on this device
+            and log workouts — they'll upload once you sign in again.
+          </Alert>
+        )}
         <Outlet />
       </Box>
 

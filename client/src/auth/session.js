@@ -47,10 +47,18 @@ export function expiresAt(token) {
 }
 
 /**
- * Read the stored session, validating expiry. An expired token is cleared here
- * rather than handed back — otherwise `isAuthenticated` is true, the app shell
- * renders, and then every request 401s and bounces you out. That mid-render
- * bounce was the "weird logged in / not logged in" behaviour.
+ * Read the stored session, tagging it with whether the token has expired.
+ *
+ * An expired token is reported, not thrown away, because a device that has
+ * been offline past `exp` has no way to refresh one — deleting it would strand
+ * someone at a login screen they cannot complete, on top of a workout they
+ * have not managed to upload yet. AuthProvider decides what an expired token
+ * is worth: offline it grants read-only access to already-cached data, online
+ * it ends the session immediately (which is the original behaviour, and what
+ * stops the signed-in-looking shell that 401s on every request).
+ *
+ * A token that is missing or structurally unreadable is still cleared here —
+ * there is nothing to grant access to and nothing to re-authenticate with.
  */
 export function loadSession() {
   let raw = localStorage.getItem(KEY);
@@ -74,11 +82,11 @@ export function loadSession() {
 
   try {
     const session = JSON.parse(raw);
-    if (!isTokenValid(session?.token)) {
+    if (!session?.token || !decodeJwt(session.token)) {
       localStorage.removeItem(KEY);
       return null;
     }
-    return session;
+    return { ...session, expired: !isTokenValid(session.token) };
   } catch {
     localStorage.removeItem(KEY);
     return null;
@@ -93,6 +101,36 @@ export function clearSession() {
   localStorage.removeItem(KEY);
   localStorage.removeItem(LEGACY_TOKEN_KEY);
   localStorage.removeItem(LEGACY_USERNAME_KEY);
+}
+
+/**
+ * The user id baked into the token, used to namespace everything the offline
+ * store keeps on the device. Read straight from the token rather than from a
+ * separate stored field so it can never disagree with whose session this is.
+ *
+ * JwtSecurityTokenHandler maps ClaimTypes.NameIdentifier to the short "nameid"
+ * claim on the way out; the long URI and "sub" are accepted too so a change to
+ * the server's claim mapping doesn't silently orphan every cached row.
+ */
+const ID_CLAIMS = [
+  'nameid',
+  'sub',
+  'http://schemas.xmlsoap.org/ws/2005/05/identity/claims/nameidentifier',
+];
+
+export function userIdFromToken(token) {
+  const claims = decodeJwt(token);
+  if (!claims) return null;
+  for (const claim of ID_CLAIMS) {
+    if (claims[claim]) return String(claims[claim]);
+  }
+  return null;
+}
+
+/** The signed-in user's id, expired token or not — an expired session still
+ *  owns its cached data while offline. */
+export function currentUserId() {
+  return userIdFromToken(currentToken());
 }
 
 /** Used by the API layer on every request, so it never reads storage keys itself. */

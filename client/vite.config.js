@@ -31,18 +31,24 @@ export default defineConfig({
         ],
       },
       workbox: {
-        // The app shell is precached; API responses deliberately are not.
+        // The app shell is precached; API responses deliberately are not, and
+        // `runtimeCaching` stays empty on purpose.
         //
-        // The previous NetworkFirst rule cached authenticated GETs in a store
-        // that outlives the session, so after signing out — or signing in as
-        // someone else — a failed request could be answered from another
-        // account's cached data. It also meant a workout you just saved could
-        // be hidden behind a 24h-stale list.
+        // A Workbox HTTP cache is keyed by URL, so it cannot tell whose data a
+        // response holds. The NetworkFirst rule that used to live here cached
+        // authenticated GETs in a store outliving the session, which meant that
+        // after signing out — or signing in as someone else — a failed request
+        // could be answered from the previous account's data.
         //
-        // Offline resilience comes from the in-progress workout draft in
-        // localStorage instead, which is the only data that actually matters
-        // to keep when the signal drops mid-session.
+        // Offline data lives in src/offline instead: an IndexedDB mirror keyed
+        // by user id, wiped on sign-out, plus an outbox that queues workout
+        // logging. Same goal, but the store knows who owns each row.
+        //
+        // Everything the SPA needs to boot is precached, including the lazy
+        // ProgressPage chunk, so a cold start with no signal still renders.
+        navigateFallback: 'index.html',
         navigateFallbackDenylist: [/^\/api/],
+        globPatterns: ['**/*.{js,css,html,ico,png,svg,webmanifest}'],
         runtimeCaching: [],
       },
     }),
