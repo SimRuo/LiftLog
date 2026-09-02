@@ -77,6 +77,11 @@ export default function LogWorkoutPage() {
   const [loadError, setLoadError] = useState('');
 
   const [date, setDate] = useState(todayInputValue());
+  // Whether the date above was picked by hand. An untouched date is just
+  // "today" and must follow the calendar; a hand-picked one is a decision and
+  // is left alone. Without this distinction a draft written on Tuesday pins
+  // Tuesday onto whatever you log from it on Wednesday.
+  const [dateTouched, setDateTouched] = useState(false);
   const [notes, setNotes] = useState('');
   const [exercises, setExercises] = useState([]);
   const [startedAt, setStartedAt] = useState(null);
@@ -101,7 +106,11 @@ export default function LogWorkoutPage() {
           try {
             const draft = JSON.parse(saved);
             if (draft.planDayId === day.planDayId && draft.exercises?.length) {
-              setDate(draft.date || todayInputValue());
+              // Only a hand-picked date survives the restore — an automatic
+              // one is re-stamped, so a draft left open overnight doesn't
+              // backdate today's session onto the day it was created.
+              setDate(draft.dateTouched && draft.date ? draft.date : todayInputValue());
+              setDateTouched(!!draft.dateTouched);
               setNotes(draft.notes || '');
               setExercises(draft.exercises);
               setStartedAt(draft.startedAt || null);
@@ -133,6 +142,7 @@ export default function LogWorkoutPage() {
         DRAFT_KEY,
         JSON.stringify({
           date,
+          dateTouched,
           notes,
           exercises,
           startedAt,
@@ -143,7 +153,26 @@ export default function LogWorkoutPage() {
     } catch {
       /* storage full or blocked — the session still works in memory */
     }
-  }, [date, notes, exercises, startedAt, nextDay]);
+  }, [date, dateTouched, notes, exercises, startedAt, nextDay]);
+
+  // Installed as a PWA the app can sit in the background for days without ever
+  // remounting, which leaves the date stuck on whenever it was last opened.
+  // Re-stamp it whenever we come back to the foreground.
+  useEffect(() => {
+    if (dateTouched) return;
+    const sync = () => {
+      if (document.visibilityState !== 'visible') return;
+      const today = todayInputValue();
+      setDate((d) => (d === today ? d : today));
+    };
+    sync();
+    document.addEventListener('visibilitychange', sync);
+    window.addEventListener('focus', sync);
+    return () => {
+      document.removeEventListener('visibilitychange', sync);
+      window.removeEventListener('focus', sync);
+    };
+  }, [dateTouched]);
 
   const doneCount = useMemo(
     () => exercises.reduce((n, ex) => n + ex.sets.filter((s) => s.done).length, 0),
@@ -330,6 +359,8 @@ export default function LogWorkoutPage() {
     localStorage.removeItem(DRAFT_KEY);
     rest.stop();
     setExercises(buildSession(nextDay));
+    setDate(todayInputValue());
+    setDateTouched(false);
     setNotes('');
     setStartedAt(null);
     setRestored(false);
@@ -417,7 +448,10 @@ export default function LogWorkoutPage() {
               type="date"
               label="Date"
               value={date}
-              onChange={(e) => setDate(e.target.value)}
+              onChange={(e) => {
+                setDate(e.target.value);
+                setDateTouched(true);
+              }}
               InputLabelProps={{ shrink: true }}
             />
             <TextField
