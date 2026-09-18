@@ -24,10 +24,14 @@ export default defineConfig({
         background_color: '#08080a',
         display: 'standalone',
         orientation: 'portrait',
+        // `any` and `maskable` are separate files on purpose. A maskable icon
+        // gets cropped to the launcher's shape, so it carries extra padding that
+        // would leave the icon looking undersized wherever it is shown uncropped.
         icons: [
-          { src: '/pwa-192x192.png', sizes: '192x192', type: 'image/png' },
-          { src: '/pwa-512x512.png', sizes: '512x512', type: 'image/png' },
-          { src: '/pwa-512x512.png', sizes: '512x512', type: 'image/png', purpose: 'any maskable' },
+          { src: '/pwa-192x192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
+          { src: '/pwa-512x512.png', sizes: '512x512', type: 'image/png', purpose: 'any' },
+          { src: '/pwa-maskable-192x192.png', sizes: '192x192', type: 'image/png', purpose: 'maskable' },
+          { src: '/pwa-maskable-512x512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
         ],
       },
       workbox: {
@@ -46,6 +50,11 @@ export default defineConfig({
         //
         // Everything the SPA needs to boot is precached, including the lazy
         // ProgressPage chunk, so a cold start with no signal still renders.
+        // Push and notification-click handling. generateSW writes the whole
+        // service worker, so there is no source file to add listeners to —
+        // importScripts pulls them in instead, leaving the caching setup above
+        // untouched. The file is in public/ and ships unbundled.
+        importScripts: ['/push-sw.js'],
         navigateFallback: 'index.html',
         navigateFallbackDenylist: [/^\/api/],
         globPatterns: ['**/*.{js,css,html,ico,png,svg,webmanifest}'],

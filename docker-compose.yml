@@ -61,6 +61,13 @@ services:
       # rather than showing a button that can't work.
       Google__ClientId: ${GOOGLE_CLIENT_ID:-}
       Google__ClientSecret: ${GOOGLE_CLIENT_SECRET:-}
+      # Web Push (VAPID). Empty means "no reminders": the config endpoint
+      # reports the feature off, the account page hides the toggle, and the
+      # reminder worker retires itself at startup. The public key is served to
+      # the browser at runtime, so only the private one is a secret.
+      Push__PublicKey: ${VAPID_PUBLIC_KEY:-}
+      Push__PrivateKey: ${VAPID_PRIVATE_KEY:-}
+      Push__Subject: ${VAPID_SUBJECT:-mailto:admin@liftlog.local}
       Ai__Provider: "ollama"
       Ollama__BaseUrl: "http://ollama:11434"
       Ollama__Model: "qwen3:4b-instruct"

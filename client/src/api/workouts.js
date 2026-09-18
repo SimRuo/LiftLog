@@ -99,6 +99,33 @@ export const workoutsApi = {
     }
   },
 
+  /**
+   * Tell the server a workout is open, so it can nudge if it's still open
+   * hours from now. Called when the first set lands and again whenever a draft
+   * is restored; the server keeps the earliest start, so re-asserting is free.
+   *
+   * Deliberately not queued in the outbox on failure. A reminder is only worth
+   * anything while the workout is actually open, and replaying "I started at
+   * 14:00" during tomorrow's sync would nudge about a session long since saved.
+   * Offline, the push couldn't be delivered anyway.
+   */
+  beginActive: async (startedAt) => {
+    try {
+      await api.post('/workouts/active', { startedAt: new Date(startedAt).toISOString() });
+    } catch {
+      /* best effort — never let a reminder get in the way of logging */
+    }
+  },
+
+  /** The workout is closed: saved, rested, or discarded. */
+  endActive: async () => {
+    try {
+      await api.delete('/workouts/active');
+    } catch {
+      /* best effort; the row also ages out on its own */
+    }
+  },
+
   delete: async (id) => {
     if (isLocalId(id)) {
       const entry = (await pending()).find((p) => p.localId === id);

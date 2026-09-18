@@ -79,6 +79,10 @@ export const cacheKeys = {
   workoutPage: (page, pageSize) => `workouts:${pageSize}:${page}`,
   workout: (id) => `workout:${id}`,
   progress: (exerciseId) => `progress:${exerciseId}`,
+  cardioActivities: 'cardio:activities',
+  cardioPage: (page, pageSize) => `cardio:${pageSize}:${page}`,
+  cardioSession: (id) => `cardio:session:${id}`,
+  cardioProgress: (activityId, metric) => `cardio:progress:${activityId}:${metric}`,
 };
 
 // ---------------------------------------------------------------------------
@@ -87,6 +91,7 @@ export const cacheKeys = {
 
 export const OUTBOX_WORKOUT = 'workout';
 export const OUTBOX_REST = 'rest';
+export const OUTBOX_CARDIO = 'cardio';
 
 // The queue is written from the API layer but displayed by the shell, and the
 // two never meet in the React tree. A plain listener set keeps the pending
@@ -142,10 +147,31 @@ export async function discardPending(seq) {
  */
 export function pendingToSummary(entry) {
   const { payload, display } = entry;
+
+  // Cardio carries none of the set machinery, and the history card keys off
+  // `kind` exactly as it does for a row that came from the server.
+  if (entry.kind === OUTBOX_CARDIO) {
+    return {
+      id: entry.localId,
+      seq: entry.seq,
+      kind: 'cardio',
+      pendingSync: true,
+      date: payload.date,
+      notes: payload.notes ?? null,
+      createdAt: new Date(entry.createdAt).toISOString(),
+      activityName: display?.activityName ?? 'Cardio',
+      activityMode: display?.activityMode ?? 'time',
+      durationSeconds: payload.durationSeconds,
+      distanceMeters: payload.distanceMeters ?? null,
+      rpe: payload.rpe ?? null,
+    };
+  }
+
   const sets = payload.sets || [];
   return {
     id: entry.localId,
     seq: entry.seq,
+    kind: 'lift',
     pendingSync: true,
     date: payload.date,
     notes: payload.notes ?? null,
@@ -172,7 +198,7 @@ export function pendingToSummary(entry) {
  * the server actively rejects (a 4xx — a deleted plan day, a validation change)
  * is dropped rather than retried forever, and reported so it isn't silent.
  */
-export async function flush(sendWorkout, sendRest) {
+export async function flush({ sendWorkout, sendRest, sendCardio }) {
   const items = await pending();
   if (items.length === 0) return { sent: 0, failed: [], stopped: false };
 
@@ -187,6 +213,7 @@ export async function flush(sendWorkout, sendRest) {
   for (const entry of ordered) {
     try {
       if (entry.kind === OUTBOX_REST) await sendRest(entry.payload);
+      else if (entry.kind === OUTBOX_CARDIO) await sendCardio(entry.payload);
       else await sendWorkout(entry.payload);
       await outboxDelete(entry.seq);
       notifyOutboxChange();
@@ -214,6 +241,17 @@ export async function invalidateWorkoutReads() {
   await quietly(cacheDelete(userId, cacheKeys.next));
   await quietly(cacheDeletePrefix(userId, 'workouts:'));
   await quietly(cacheDeletePrefix(userId, 'progress:'));
+}
+
+/**
+ * A cardio session was written. History is one timeline over both kinds, so the
+ * mirrored `workouts:` pages are stale too — but `next` is not: cardio sits
+ * outside the plan rotation and never moves it on.
+ */
+export async function invalidateCardioReads() {
+  const userId = currentUserId();
+  await quietly(cacheDeletePrefix(userId, 'workouts:'));
+  await quietly(cacheDeletePrefix(userId, 'cardio:'));
 }
 
 /**

@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Box, Button, Card, Stack, Typography, Tooltip } from '@mui/material';
 import { PlayArrowRounded, ListAltRounded } from '@mui/icons-material';
 import WorkoutCard from '../components/workout/WorkoutCard';
+import CardioCard from '../components/cardio/CardioCard';
 import { Label, SectionHeader, EmptyState, ListSkeleton, Stat } from '../components/ui/Bits';
 import { workoutsApi } from '../api/workouts';
 import { onOutboxChange } from '../offline/store';
@@ -45,7 +46,11 @@ function WeekStrip({ workouts }) {
             return (
               <Tooltip
                 key={i}
-                title={d.session ? d.session.planDayName || 'Logged' : d.date.toLocaleDateString()}
+                title={
+                  d.session
+                    ? d.session.activityName || d.session.planDayName || 'Logged'
+                    : d.date.toLocaleDateString()
+                }
               >
                 <Box sx={{ textAlign: 'center' }}>
                   <Box
@@ -224,9 +229,13 @@ export default function WorkoutHistoryPage() {
     });
   }, [pendingItems, items]);
 
-  const totalVolume = useMemo(
-    () => visible.slice(0, 30).reduce((sum, w) => sum + Number(w.volume || 0), 0),
+  const lifted = useMemo(
+    () => visible.filter((w) => Number(w.volume || 0) > 0).slice(0, 30),
     [visible],
+  );
+  const totalVolume = useMemo(
+    () => lifted.reduce((sum, w) => sum + Number(w.volume), 0),
+    [lifted],
   );
 
   // Nothing more to page through once the server list is exhausted — or once
@@ -259,9 +268,13 @@ export default function WorkoutHistoryPage() {
         />
       ) : (
         <>
-          {visible.map((w) => (
-            <WorkoutCard key={w.id} workout={w} />
-          ))}
+          {visible.map((w) =>
+            w.kind === 'cardio' ? (
+              <CardioCard key={`cardio-${w.id}`} session={w} />
+            ) : (
+              <WorkoutCard key={`lift-${w.id}`} workout={w} />
+            ),
+          )}
 
           {hasMore && (
             <Button fullWidth variant="outlined" disabled={loading} onClick={() => setPage((p) => p + 1)} sx={{ mt: 1 }}>
@@ -271,7 +284,7 @@ export default function WorkoutHistoryPage() {
 
           {totalVolume > 0 && (
             <Typography sx={{ mt: 2, textAlign: 'center', color: 'text.secondary', fontSize: '0.75rem' }}>
-              {volumeLabel(totalVolume)} moved across your last {Math.min(items.length, 30)} sessions
+              {volumeLabel(totalVolume)} moved across your last {lifted.length} lifting sessions
               {items[0] && ` · most recent ${relativeDay(items[0].date).toLowerCase()}`}
             </Typography>
           )}

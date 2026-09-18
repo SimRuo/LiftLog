@@ -3,6 +3,7 @@ import { Box, Card, Stack, Typography } from '@mui/material';
 import { useAuth } from '../context/auth-context';
 import GoogleConnect from '../components/auth/GoogleConnect';
 import PasswordSection from '../components/account/PasswordSection';
+import PushSection from '../components/account/PushSection';
 import { Label, SectionHeader } from '../components/ui/Bits';
 import { useToast } from '../components/ui/toast-context';
 
@@ -25,6 +26,13 @@ export default function AccountPage() {
 
       <Card sx={{ p: 2, mb: 2 }}>
         <GoogleConnect onError={(msg) => toast.error(msg)} refreshSignal={googleRefresh} />
+      </Card>
+
+      <Card sx={{ p: 2, mb: 2 }}>
+        <PushSection
+          onError={(msg) => toast.error(msg)}
+          onSuccess={(msg) => toast.success(msg)}
+        />
       </Card>
 
       <Card sx={{ p: 2 }}>

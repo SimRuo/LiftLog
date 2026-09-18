@@ -12,6 +12,7 @@ import {
 } from '@mui/material';
 import { LineChart } from '@mui/x-charts/LineChart';
 import { ShowChartRounded } from '@mui/icons-material';
+import CardioProgress from '../components/progress/CardioProgress';
 import { exercisesApi } from '../api/exercises';
 import { progressApi } from '../api/progress';
 import { Label, Stat, EmptyState, SectionHeader } from '../components/ui/Bits';
@@ -33,9 +34,13 @@ const RANGES = [
 ];
 
 const LAST_KEY = 'liftlog.progress.exercise';
+const MODE_KEY = 'liftlog.progress.mode';
 
 export default function ProgressPage() {
   const toast = useToast();
+  // Which half of the page you were last looking at, for the same reason the
+  // exercise is remembered: re-picking it every visit is pure friction.
+  const [mode, setMode] = useState(() => localStorage.getItem(MODE_KEY) || 'lifting');
   const [exercises, setExercises] = useState([]);
   const [selected, setSelected] = useState(null);
   const [metric, setMetric] = useState('estimated1RM');
@@ -109,6 +114,29 @@ export default function ProgressPage() {
         Progress
       </Typography>
 
+      <ToggleButtonGroup
+        exclusive
+        size="small"
+        value={mode}
+        onChange={(_, v) => {
+          if (!v) return;
+          setMode(v);
+          localStorage.setItem(MODE_KEY, v);
+        }}
+        sx={{ mb: 2, width: '100%' }}
+      >
+        <ToggleButton value="lifting" sx={{ flex: 1 }}>
+          Lifting
+        </ToggleButton>
+        <ToggleButton value="cardio" sx={{ flex: 1 }}>
+          Cardio
+        </ToggleButton>
+      </ToggleButtonGroup>
+
+      {mode === 'cardio' ? (
+        <CardioProgress />
+      ) : (
+        <>
       <Autocomplete
         options={exercises}
         value={selected}
@@ -249,6 +277,8 @@ export default function ProgressPage() {
               </Card>
             </>
           )}
+        </>
+      )}
         </>
       )}
     </Box>

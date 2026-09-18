@@ -184,6 +184,15 @@ export default function LogWorkoutPage() {
     [exercises],
   );
 
+  // Let the server know a workout is open, so it can nudge in a few hours if
+  // it's still open. Keyed on startedAt rather than fired from toggleDone so a
+  // draft restored on another device re-announces itself too; the endpoint
+  // keeps the earliest start, so saying it twice changes nothing.
+  useEffect(() => {
+    if (!startedAt) return;
+    workoutsApi.beginActive(startedAt);
+  }, [startedAt]);
+
   // Elapsed clock, ticking only once work has actually started.
   const now = useNow(!!startedAt);
   const elapsed = startedAt ? (now - startedAt) / 1000 : 0;
@@ -341,6 +350,7 @@ export default function LogWorkoutPage() {
         display,
       );
       localStorage.removeItem(DRAFT_KEY);
+      workoutsApi.endActive();
       rest.stop();
       if (saved?.pendingSync) {
         toast.success(
@@ -365,6 +375,7 @@ export default function LogWorkoutPage() {
         notes: notes.trim() || null,
       });
       localStorage.removeItem(DRAFT_KEY);
+      workoutsApi.endActive();
       toast.success(
         saved?.pendingSync
           ? "Rest day saved on this device — it uploads when you're back online."
@@ -380,6 +391,7 @@ export default function LogWorkoutPage() {
 
   const discard = () => {
     localStorage.removeItem(DRAFT_KEY);
+    workoutsApi.endActive();
     rest.stop();
     setExercises(buildSession(nextDay));
     setDate(todayInputValue());

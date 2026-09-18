@@ -73,6 +73,14 @@ builder.Services.AddHostedService<server.Services.PlanGenerationWorker>();
 // Scoped, because it holds the request-scoped IDbConnection.
 builder.Services.AddScoped<server.Services.ExerciseResolver>();
 
+// Web Push. Bound the same way as Google: without VAPID keys the config
+// endpoint reports the feature off, the client never offers the toggle, and
+// the reminder worker retires itself at startup.
+builder.Services.Configure<server.Services.PushOptions>(builder.Configuration.GetSection("Push"));
+builder.Services.AddHttpClient(nameof(server.Services.PushSender));
+builder.Services.AddSingleton<server.Services.PushSender>();
+builder.Services.AddHostedService<server.Services.WorkoutReminderWorker>();
+
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(c =>

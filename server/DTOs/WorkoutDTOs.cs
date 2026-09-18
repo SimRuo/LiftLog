@@ -40,6 +40,14 @@ public class CreateSetRequest
 public class WorkoutSummaryResponse
 {
     public int Id { get; set; }
+
+    /// <summary>
+    /// "lift" or "cardio". History is one timeline over two tables, so ids are
+    /// only unique within a kind — this is what tells a card which shape it is
+    /// looking at, and which detail route to open.
+    /// </summary>
+    public string Kind { get; set; } = "lift";
+
     public DateTime Date { get; set; }
     public string? Notes { get; set; }
     public int ExerciseCount { get; set; }
@@ -54,6 +62,13 @@ public class WorkoutSummaryResponse
     public DateTime CreatedAt { get; set; }
     public string? PlanDayName { get; set; }
     public bool IsRestDay { get; set; }
+
+    // Cardio only — null on a lifting session.
+    public string? ActivityName { get; set; }
+    public string? ActivityMode { get; set; }
+    public int? DurationSeconds { get; set; }
+    public int? DistanceMeters { get; set; }
+    public byte? Rpe { get; set; }
 }
 
 public class WorkoutDetailResponse

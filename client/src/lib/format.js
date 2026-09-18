@@ -85,3 +85,44 @@ export function summariseSets(sets) {
   }
   return sets.map((s) => `${s.reps}${s.weight > 0 ? `@${kg(s.weight)}` : ''}`).join(', ');
 }
+
+/** Whole kilometres from stored metres, e.g. 10500 -> "10.5 km". */
+export function km(meters) {
+  if (!meters) return '—';
+  const value = meters / 1000;
+  return `${value >= 100 ? Math.round(value) : value.toFixed(2).replace(/\.?0+$/, '')} km`;
+}
+
+/**
+ * Pace as min/km — the number that actually says whether cardio is improving.
+ *
+ * Deliberately not speed: 5:30/km is how runners and rowers read effort, and a
+ * falling line meaning "getting better" is worth the one-off explanation on the
+ * axis. Returns null where there's no distance to divide by.
+ */
+export function pace(seconds, meters) {
+  if (!seconds || !meters) return null;
+  const perKm = seconds / (meters / 1000);
+  const mins = Math.floor(perKm / 60);
+  return `${mins}:${String(Math.round(perKm % 60)).padStart(2, '0')}`;
+}
+
+/** Compact duration for a card: 1:05:30, or 24:10 under an hour. */
+export function clock(seconds) {
+  const total = Math.max(0, Math.round(seconds || 0));
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const sec = total % 60;
+  const pad = (n) => String(n).padStart(2, '0');
+  return h > 0 ? `${h}:${pad(m)}:${pad(sec)}` : `${m}:${pad(sec)}`;
+}
+
+/** "Moderate" reads better than a bare 6 on a card. */
+export function rpeLabel(rpe) {
+  if (!rpe) return null;
+  if (rpe <= 2) return 'Very easy';
+  if (rpe <= 4) return 'Easy';
+  if (rpe <= 6) return 'Moderate';
+  if (rpe <= 8) return 'Hard';
+  return 'Max effort';
+}

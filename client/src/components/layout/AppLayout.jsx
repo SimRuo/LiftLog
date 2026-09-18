@@ -19,6 +19,7 @@ import {
 import {
   FitnessCenterRounded,
   PlayArrowRounded,
+  FavoriteRounded,
   ListAltRounded,
   ShowChartRounded,
   AccountCircleOutlined,
@@ -35,6 +36,7 @@ import { ink } from '../../theme';
 const navItems = [
   { label: 'History', icon: <ListAltRounded />, path: '/workouts', exact: true },
   { label: 'Train', icon: <PlayArrowRounded />, path: '/workouts/log' },
+  { label: 'Cardio', icon: <FavoriteRounded />, path: '/cardio' },
   { label: 'Plan', icon: <EventNoteRounded />, path: '/plan' },
   { label: 'Progress', icon: <ShowChartRounded />, path: '/progress' },
 ];

@@ -109,6 +109,15 @@ public class WorkoutsController : ControllerBase
         });
     }
 
+    /// <summary>
+    /// One timeline over both lifting and cardio.
+    ///
+    /// The union pages over keys alone, and the details for each kind are
+    /// fetched separately against that page. Merging the two full queries
+    /// instead would mean padding each with the other's columns, and paging
+    /// them separately and merging client-side would mis-order the tail —
+    /// the oldest row of one page can be newer than the newest of the other.
+    /// </summary>
     [HttpGet]
     public async Task<ActionResult<PaginatedResponse<WorkoutSummaryResponse>>> GetWorkouts(
         [FromQuery] int page = 1, [FromQuery] int pageSize = 20)
@@ -116,15 +125,73 @@ public class WorkoutsController : ControllerBase
         var offset = (page - 1) * pageSize;
 
         var total = await _db.ExecuteScalarAsync<int>(
-            "SELECT COUNT(*) FROM WorkoutSessions WHERE UserId = @UserId",
+            @"SELECT (SELECT COUNT(*) FROM WorkoutSessions WHERE UserId = @UserId)
+                   + (SELECT COUNT(*) FROM CardioSessions WHERE UserId = @UserId)",
             new { UserId });
 
-        var items = await _db.QueryAsync<WorkoutSummaryResponse>(
+        var keys = (await _db.QueryAsync<TimelineKey>(
+            @"SELECT Id, Kind FROM (
+                  SELECT Id, CAST('lift' AS NVARCHAR(10)) AS Kind, Date, CreatedAt
+                    FROM WorkoutSessions WHERE UserId = @UserId
+                  UNION ALL
+                  SELECT Id, CAST('cardio' AS NVARCHAR(10)) AS Kind, Date, CreatedAt
+                    FROM CardioSessions WHERE UserId = @UserId
+              ) timeline
+              ORDER BY Date DESC, CreatedAt DESC
+              OFFSET @Offset ROWS FETCH NEXT @PageSize ROWS ONLY",
+            new { UserId, Offset = offset, PageSize = pageSize })).ToList();
+
+        var liftIds = keys.Where(k => k.Kind == "lift").Select(k => k.Id).ToList();
+        var cardioIds = keys.Where(k => k.Kind == "cardio").Select(k => k.Id).ToList();
+
+        var lifts = liftIds.Count == 0
+            ? new List<WorkoutSummaryResponse>()
+            : (await QueryLiftSummaries(liftIds)).ToList();
+
+        var cardio = cardioIds.Count == 0
+            ? new List<WorkoutSummaryResponse>()
+            : (await QueryCardioSummaries(cardioIds)).ToList();
+
+        // Back into the order the union established — the detail queries each
+        // sorted only within their own kind.
+        var byKey = lifts.Concat(cardio).ToDictionary(w => (w.Kind, w.Id));
+        var items = keys
+            .Where(k => byKey.ContainsKey((k.Kind, k.Id)))
+            .Select(k => byKey[(k.Kind, k.Id)])
+            .ToList();
+
+        return Ok(new PaginatedResponse<WorkoutSummaryResponse>
+        {
+            Items = items, TotalCount = total,
+            Page = page, PageSize = pageSize
+        });
+    }
+
+    private class TimelineKey
+    {
+        public int Id { get; set; }
+        public string Kind { get; set; } = string.Empty;
+    }
+
+    private async Task<IEnumerable<WorkoutSummaryResponse>> QueryCardioSummaries(List<int> ids) =>
+        await _db.QueryAsync<WorkoutSummaryResponse>(
+            @"SELECT cs.Id, cs.Date, cs.Notes, cs.CreatedAt,
+                     CAST('cardio' AS NVARCHAR(10)) AS Kind,
+                     a.Name AS ActivityName, a.Mode AS ActivityMode,
+                     cs.DurationSeconds, cs.DistanceMeters, cs.Rpe
+              FROM CardioSessions cs
+              INNER JOIN CardioActivities a ON a.Id = cs.CardioActivityId
+              WHERE cs.UserId = @UserId AND cs.Id IN @ids",
+            new { UserId, ids });
+
+    private async Task<IEnumerable<WorkoutSummaryResponse>> QueryLiftSummaries(List<int> ids) =>
+        await _db.QueryAsync<WorkoutSummaryResponse>(
             // ExerciseNames comes from a correlated subquery rather than
             // STRING_AGG in the outer GROUP BY: SQL Server has no
             // STRING_AGG(DISTINCT ...), and aggregating over the join would
             // repeat a name once per set.
             @"SELECT ws.Id, ws.Date, ws.Notes, ws.CreatedAt, ws.IsRestDay,
+                     CAST('lift' AS NVARCHAR(10)) AS Kind,
                      pd.Name AS PlanDayName,
                      COUNT(DISTINCT wset.ExerciseId) AS ExerciseCount,
                      COUNT(wset.Id) AS SetCount,
@@ -137,18 +204,9 @@ public class WorkoutsController : ControllerBase
               FROM WorkoutSessions ws
               LEFT JOIN PlanDays pd ON pd.Id = ws.PlanDayId
               LEFT JOIN WorkoutSets wset ON wset.WorkoutSessionId = ws.Id
-              WHERE ws.UserId = @UserId
-              GROUP BY ws.Id, ws.Date, ws.Notes, ws.CreatedAt, ws.IsRestDay, pd.Name
-              ORDER BY ws.Date DESC, ws.CreatedAt DESC
-              OFFSET @Offset ROWS FETCH NEXT @PageSize ROWS ONLY",
-            new { UserId, Offset = offset, PageSize = pageSize });
-
-        return Ok(new PaginatedResponse<WorkoutSummaryResponse>
-        {
-            Items = items.ToList(), TotalCount = total,
-            Page = page, PageSize = pageSize
-        });
-    }
+              WHERE ws.UserId = @UserId AND ws.Id IN @ids
+              GROUP BY ws.Id, ws.Date, ws.Notes, ws.CreatedAt, ws.IsRestDay, pd.Name",
+            new { UserId, ids });
 
     [HttpGet("{id}")]
     public async Task<ActionResult<WorkoutDetailResponse>> GetWorkout(int id)
@@ -218,7 +276,53 @@ public class WorkoutsController : ControllerBase
             await GetWorkoutDetail(sessionId));
     }
 
-    [HttpDelete("{id}")]
+    /// <summary>
+    /// Marks a workout as open on this account, so WorkoutReminderWorker can
+    /// nudge if it's still open hours later.
+    ///
+    /// The session itself stays on the device until it's finished — this is
+    /// only the fact that one exists, plus when it began. Upserted, and the
+    /// earliest start wins: the client re-asserts this whenever it restores a
+    /// draft, and that must not restart the three-hour clock.
+    /// </summary>
+    [HttpPost("active")]
+    public async Task<IActionResult> BeginActiveWorkout(BeginActiveWorkoutRequest request)
+    {
+        var startedAt = request.StartedAt.UtcDateTime;
+
+        // A device clock running fast would otherwise push the nudge into
+        // never, so a future start is treated as "now".
+        var now = DateTime.UtcNow;
+        if (startedAt > now) startedAt = now;
+
+        await _db.ExecuteAsync(
+            @"UPDATE ActiveWorkouts
+              SET StartedAt = CASE WHEN @StartedAt < StartedAt THEN @StartedAt ELSE StartedAt END
+              WHERE UserId = @UserId;
+
+              IF @@ROWCOUNT = 0
+              INSERT INTO ActiveWorkouts (UserId, StartedAt) VALUES (@UserId, @StartedAt);",
+            new { UserId, StartedAt = startedAt });
+
+        return NoContent();
+    }
+
+    /// <summary>
+    /// The workout is no longer open — saved, logged as rest, or discarded.
+    /// Idempotent: the client calls it from every one of those exits, and a
+    /// row may well already be gone.
+    /// </summary>
+    [HttpDelete("active")]
+    public async Task<IActionResult> EndActiveWorkout()
+    {
+        await _db.ExecuteAsync(
+            "DELETE FROM ActiveWorkouts WHERE UserId = @UserId",
+            new { UserId });
+
+        return NoContent();
+    }
+
+    [HttpDelete("{id:int}")]
     public async Task<IActionResult> DeleteWorkout(int id)
     {
         var rows = await _db.ExecuteAsync(

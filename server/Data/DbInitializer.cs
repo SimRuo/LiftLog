@@ -12,6 +12,8 @@ public static class DbInitializer
 
         await connection.ExecuteAsync(CreateTablesSql);
         await connection.ExecuteAsync(SeedExercisesSql);
+        await connection.ExecuteAsync(SeedCardioActivitiesSql);
+        await connection.ExecuteAsync(SeedHyroxSql);
     }
 
     private const string CreateTablesSql = @"
@@ -101,6 +103,141 @@ public static class DbInitializer
             );
             CREATE INDEX IX_WorkoutSets_SessionId_ExerciseId
                 ON WorkoutSets(WorkoutSessionId, ExerciseId);
+        END
+
+        IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'CardioActivities')
+        BEGIN
+            -- Cardio deliberately does not reuse Exercises/WorkoutSets. A set is
+            -- reps x weight, and GetWorkouts sums Weight * Reps as a session's
+            -- headline volume — storing a 30-minute 10km run in those columns
+            -- would render it as 300 kg on a history card and feed nonsense
+            -- into the est. 1RM and volume charts.
+            --
+            -- Mode decides which numbers an activity even has: 'distance' work
+            -- (running, rowing) is measured by pace, 'time' work (jump rope,
+            -- circuits) only by how long it lasted. The logging form asks for
+            -- one or the other off the back of this.
+            CREATE TABLE CardioActivities (
+                Id              INT IDENTITY(1,1) PRIMARY KEY,
+                Name            NVARCHAR(100) NOT NULL,
+                Mode            NVARCHAR(20)  NOT NULL,
+                IsDefault       BIT           NOT NULL DEFAULT 0,
+                CreatedByUserId NVARCHAR(450) NULL
+                    REFERENCES AspNetUsers(Id) ON DELETE SET NULL
+            );
+            CREATE UNIQUE INDEX IX_CardioActivities_Name ON CardioActivities(Name);
+        END
+
+        IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'CardioSessions')
+        BEGIN
+            -- Distance in whole metres and duration in whole seconds: both are
+            -- exact integers, so pace arithmetic can't accumulate the rounding
+            -- error that storing kilometres as a decimal would invite.
+            CREATE TABLE CardioSessions (
+                Id               INT IDENTITY(1,1) PRIMARY KEY,
+                UserId           NVARCHAR(450) NOT NULL
+                    REFERENCES AspNetUsers(Id) ON DELETE CASCADE,
+                CardioActivityId INT NOT NULL
+                    REFERENCES CardioActivities(Id) ON DELETE NO ACTION,
+                Date             DATETIME2     NOT NULL,
+                DurationSeconds  INT           NOT NULL,
+                DistanceMeters   INT           NULL,
+                -- Rate of perceived exertion, 1-10. Optional, but it is what
+                -- makes a pace trend readable: the same pace at a lower effort
+                -- is progress, a faster one at maximum effort may not be.
+                Rpe              TINYINT       NULL,
+                Notes            NVARCHAR(MAX) NULL,
+                CreatedAt        DATETIME2     NOT NULL DEFAULT SYSUTCDATETIME()
+            );
+            CREATE INDEX IX_CardioSessions_UserId_Date ON CardioSessions(UserId, Date);
+            CREATE INDEX IX_CardioSessions_ActivityId ON CardioSessions(CardioActivityId);
+        END
+
+        IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'CardioActivitySteps')
+        BEGIN
+            -- The shape of a circuit: an ordered list of stations, each with
+            -- what it prescribes. This is a template, not a record of anything
+            -- done — it's what makes two attempts at the same workout
+            -- comparable, which is the entire point of logging a fixed format.
+            --
+            -- Two references into CardioActivities, doing different jobs:
+            -- CardioActivityId is the circuit that owns the step, and
+            -- StepActivityId is the station being performed. Only the former
+            -- cascades; a station is shared and must never be deleted out from
+            -- under a circuit that uses it.
+            CREATE TABLE CardioActivitySteps (
+                Id                   INT IDENTITY(1,1) PRIMARY KEY,
+                CardioActivityId     INT NOT NULL
+                    REFERENCES CardioActivities(Id) ON DELETE CASCADE,
+                [Order]              INT NOT NULL,
+                StepActivityId       INT NOT NULL
+                    REFERENCES CardioActivities(Id) ON DELETE NO ACTION,
+                -- Whichever of these the station is measured in. Laps and reps
+                -- are a third measure that distance can't stand in for: 10 sled
+                -- laps means nothing in metres without a track length, and 100
+                -- wall balls isn't a distance at all.
+                TargetDistanceMeters INT NULL,
+                TargetReps           INT NULL
+            );
+            CREATE INDEX IX_CardioActivitySteps_Activity
+                ON CardioActivitySteps(CardioActivityId, [Order]);
+        END
+
+        IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'CardioSegments')
+        BEGIN
+            -- What actually happened, step by step. DurationSeconds is nullable
+            -- on purpose: the session's own total is the required number, and a
+            -- split is filled in only for the stations worth remembering.
+            CREATE TABLE CardioSegments (
+                Id               INT IDENTITY(1,1) PRIMARY KEY,
+                CardioSessionId  INT NOT NULL
+                    REFERENCES CardioSessions(Id) ON DELETE CASCADE,
+                [Order]          INT NOT NULL,
+                CardioActivityId INT NOT NULL
+                    REFERENCES CardioActivities(Id) ON DELETE NO ACTION,
+                DurationSeconds  INT NULL,
+                DistanceMeters   INT NULL,
+                Reps             INT NULL
+            );
+            CREATE INDEX IX_CardioSegments_Session
+                ON CardioSegments(CardioSessionId, [Order]);
+        END
+
+        IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'PushSubscriptions')
+        BEGIN
+            CREATE TABLE PushSubscriptions (
+                Id        INT IDENTITY(1,1) PRIMARY KEY,
+                UserId    NVARCHAR(450)  NOT NULL
+                    REFERENCES AspNetUsers(Id) ON DELETE CASCADE,
+                -- One row per browser, keyed by the endpoint URL — the only
+                -- stable identifier a browser hands out. 500 leaves generous
+                -- room over the ~200 characters FCM and Mozilla actually issue,
+                -- while staying well inside the 1700-byte index key limit so it
+                -- can be indexed directly.
+                Endpoint  NVARCHAR(500) NOT NULL,
+                P256dh    NVARCHAR(200) NOT NULL,
+                Auth      NVARCHAR(100) NOT NULL,
+                CreatedAt DATETIME2     NOT NULL DEFAULT SYSUTCDATETIME()
+            );
+            CREATE UNIQUE INDEX IX_PushSubscriptions_Endpoint
+                ON PushSubscriptions(Endpoint);
+            CREATE INDEX IX_PushSubscriptions_UserId ON PushSubscriptions(UserId);
+        END
+
+        IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'ActiveWorkouts')
+        BEGIN
+            -- A workout in progress lives in the browser's localStorage until
+            -- it's finished, so the server would otherwise have no idea one is
+            -- open. This is the device telling it, purely so the reminder
+            -- worker has something to scan. One open workout per user, hence
+            -- UserId as the key rather than a surrogate.
+            CREATE TABLE ActiveWorkouts (
+                UserId     NVARCHAR(450) NOT NULL PRIMARY KEY
+                    REFERENCES AspNetUsers(Id) ON DELETE CASCADE,
+                StartedAt  DATETIME2 NOT NULL,
+                RemindedAt DATETIME2 NULL,
+                Reminders  INT       NOT NULL DEFAULT 0
+            );
         END
     ";
 
@@ -195,5 +332,86 @@ public static class DbInitializer
             ('Ab Wheel Rollout',           'Core')
         ) AS v(Name, Category)
         WHERE NOT EXISTS (SELECT 1 FROM Exercises e WHERE e.Name = v.Name);
+    ";
+
+    // Same insert-what's-missing rule as the exercises above, so this list can
+    // grow later and reach databases that already ran it.
+    private const string SeedCardioActivitiesSql = @"
+        INSERT INTO CardioActivities (Name, Mode, IsDefault)
+        SELECT v.Name, v.Mode, 1
+        FROM (VALUES
+            ('Running',           'distance'),
+            ('Treadmill',         'distance'),
+            ('Walking',           'distance'),
+            ('Hiking',            'distance'),
+            ('Cycling',           'distance'),
+            ('Stationary Bike',   'distance'),
+            ('Rowing',            'distance'),
+            ('Ski Erg',           'distance'),
+            ('Swimming',          'distance'),
+            ('Elliptical',        'distance'),
+            ('Assault Bike',      'time'),
+            ('Stair Climber',     'time'),
+            ('Jump Rope',         'time'),
+            ('Circuit Training',  'time'),
+            ('Bag Work',          'time'),
+            ('Sled Push',         'time'),
+            ('Kettlebell Swings', 'time'),
+            ('Sauna',             'time')
+        ) AS v(Name, Mode)
+        WHERE NOT EXISTS (SELECT 1 FROM CardioActivities c WHERE c.Name = v.Name);
+    ";
+
+    // The Hyrox race format, as a circuit anyone can log against.
+    //
+    // Three steps, each skippable on its own: the stations it needs, the
+    // circuit itself, then the ordered steps — which are only written if the
+    // circuit has none, so someone who has edited theirs doesn't get it reset
+    // on the next deploy.
+    private const string SeedHyroxSql = @"
+        INSERT INTO CardioActivities (Name, Mode, IsDefault)
+        SELECT v.Name, v.Mode, 1
+        FROM (VALUES
+            ('Sled Pull',           'time'),
+            ('Burpee Broad Jumps',  'time'),
+            ('Farmers Carry',       'time'),
+            ('Sandbag Lunges',      'time'),
+            ('Wall Balls',          'time')
+        ) AS v(Name, Mode)
+        WHERE NOT EXISTS (SELECT 1 FROM CardioActivities c WHERE c.Name = v.Name);
+
+        INSERT INTO CardioActivities (Name, Mode, IsDefault)
+        SELECT 'Hyrox', 'circuit', 1
+        WHERE NOT EXISTS (SELECT 1 FROM CardioActivities c WHERE c.Name = 'Hyrox');
+
+        IF NOT EXISTS (
+            SELECT 1 FROM CardioActivitySteps s
+            INNER JOIN CardioActivities a ON a.Id = s.CardioActivityId
+            WHERE a.Name = 'Hyrox')
+        BEGIN
+            INSERT INTO CardioActivitySteps
+                (CardioActivityId, [Order], StepActivityId, TargetDistanceMeters, TargetReps)
+            SELECT circuit.Id, v.StepOrder, station.Id, v.Distance, v.Reps
+            FROM (VALUES
+                ( 0, 'Running',            1000, NULL),
+                ( 1, 'Ski Erg',            1000, NULL),
+                ( 2, 'Running',            1000, NULL),
+                ( 3, 'Sled Push',            50, NULL),
+                ( 4, 'Running',            1000, NULL),
+                ( 5, 'Sled Pull',            50, NULL),
+                ( 6, 'Running',            1000, NULL),
+                ( 7, 'Burpee Broad Jumps',   80, NULL),
+                ( 8, 'Running',            1000, NULL),
+                ( 9, 'Rowing',             1000, NULL),
+                (10, 'Running',            1000, NULL),
+                (11, 'Farmers Carry',       200, NULL),
+                (12, 'Running',            1000, NULL),
+                (13, 'Sandbag Lunges',      100, NULL),
+                (14, 'Running',            1000, NULL),
+                (15, 'Wall Balls',         NULL,  100)
+            ) AS v(StepOrder, StepName, Distance, Reps)
+            INNER JOIN CardioActivities station ON station.Name = v.StepName
+            CROSS JOIN (SELECT TOP 1 Id FROM CardioActivities WHERE Name = 'Hyrox') circuit;
+        END
     ";
 }

@@ -4,6 +4,7 @@ import { useAuth } from './auth-context';
 import { useToast } from '../components/ui/toast-context';
 import { pending, flush, onOutboxChange, invalidateWorkoutReads } from '../offline/store';
 import { workoutsRemote } from '../api/workouts';
+import { cardioRemote } from '../api/cardio';
 
 /** How often to retry a non-empty queue. Long enough to be invisible on a
  *  battery, short enough that a session isn't still "pending" after a set. */
@@ -61,7 +62,11 @@ export function OfflineProvider({ children }) {
       flushing.current = true;
       setSyncing(true);
       try {
-        const result = await flush(workoutsRemote.create, workoutsRemote.logRest);
+        const result = await flush({
+          sendWorkout: workoutsRemote.create,
+          sendRest: workoutsRemote.logRest,
+          sendCardio: cardioRemote.create,
+        });
         if (result.sent > 0) {
           await invalidateWorkoutReads();
           if (!silent) {

@@ -3,6 +3,7 @@ import { AuthContext } from './auth-context';
 import { loadSession, saveSession, clearSession, expiresAt, userIdFromToken } from '../auth/session';
 import { setUnauthorizedHandler } from '../api/client';
 import { clearCachedReads } from '../offline/store';
+import { releasePushOnSignOut } from '../lib/push';
 
 /**
  * An expired token is only worth something while there is no network.
@@ -44,6 +45,9 @@ export function AuthProvider({ children }) {
     // device can't be shown them. The outbox survives deliberately — it holds
     // workouts that exist nowhere else yet.
     clearCachedReads(userIdFromToken(sessionRef.current?.token));
+    // Same reasoning, for push: a subscription left registered would deliver
+    // this account's reminders to whoever signs in on this device next.
+    releasePushOnSignOut();
     clearSession();
     setSession(null);
     setExpiredNotice(!!wasExpiry);
