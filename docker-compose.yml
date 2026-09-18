@@ -21,6 +21,7 @@ services:
       timeout: 5s
       retries: 10
       start_period: 30s
+    restart: unless-stopped
 
   # Plan generation, self-hosted. CPU-only inference on a 4-core Kaby Lake:
   # roughly 10 tokens/sec on a 4B model at Q4, so a six-day plan lands in about
@@ -73,6 +74,7 @@ services:
       Ollama__Model: "qwen3:4b-instruct"
     ports:
       - "5000:5000"
+    restart: unless-stopped
     depends_on:
       db:
         condition: service_healthy
