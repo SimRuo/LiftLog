@@ -34,7 +34,9 @@ public class OllamaPlanGenerator : IPlanGenerator
         _http.BaseAddress = new Uri(config["Ollama:BaseUrl"] ?? "http://ollama:11434");
         // Generation on CPU is slow enough that the default 100s HttpClient
         // timeout would abort a perfectly healthy six-day plan partway through.
-        _http.Timeout = TimeSpan.FromMinutes(10);
+        // Measured throughput on the deploy box is 2.5–4 tokens/sec, so a full
+        // six-day plan runs 12+ minutes; 30 leaves headroom.
+        _http.Timeout = TimeSpan.FromMinutes(30);
 
         _model = config["Ollama:Model"] ?? "qwen3:4b-instruct";
         // Short, because this is a feature someone uses when they change
