@@ -100,10 +100,11 @@ public class OllamaPlanGenerator : IPlanGenerator
             options = new
             {
                 num_ctx = _contextTokens,
-                // Enough for a six-day plan with room to spare; a cap means a
-                // degenerate repetition loop fails in a minute rather than
-                // occupying the box until the HTTP timeout.
-                num_predict = 2048,
+                // A six-day, ~30-exercise plan with per-exercise notes runs to
+                // ~2000 tokens, so 2048 was cutting it off. 3072 leaves room
+                // while still ending a degenerate repetition loop (~20 min at
+                // this box's 2.5 tokens/sec) before the 30-minute HTTP timeout.
+                num_predict = 3072,
                 temperature = 0.6,
             },
             messages = new[]
